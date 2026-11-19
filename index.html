@@ -586,7 +586,7 @@ const AppKit = (() => {
 })();
 </script>
 <script>
-const BUILD = '1795078008';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
+const BUILD = '1795080237';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
 AppKit.fixViewport();
 AppKit.autoUpdate(BUILD);
 AppKit.showErrors(BUILD);
@@ -800,7 +800,7 @@ const tabs = AppKit.tabs({
     if (id === 'set') {
       const srv = S.srv;
       sc.innerHTML = `
-      <div class="card"><h2>서버 연결</h2>${srv ? `<p><span class="ok">연결됨</span> · 명함 읽기: ${S.ai == null ? '확인 중' : S.ai ? 'AI(Claude)' : '구글 글자 인식'}</p>` : '<p>명함 사진을 읽고 구글 시트·드라이브에 저장하려면 서버를 연결해 주세요. 만드는 방법은 README에 있어요.</p>'}
+      <div class="card"><h2>서버 연결</h2>${srv ? `<p><span class="ok">연결됨</span> · 명함 읽기: ${S.ai == null ? '확인 중' : S.ai ? 'AI(Claude)' : '구글 글자 인식(무료)'}</p>` : '<p>명함 사진을 읽고 구글 시트·드라이브에 저장하려면 서버를 연결해 주세요. 만드는 방법은 README에 있어요.</p>'}
         <form class="form" id="srvf" style="margin-top:12px"><label>서버 주소 (…/exec)<input name="url" type="url" value="${esc(srv?.url || '')}" placeholder="https://script.google.com/macros/s/…/exec" autocapitalize="off"></label>
         <label>연결 암호<input name="token" type="text" value="${esc(srv?.token || '')}" autocapitalize="off" autocomplete="off"></label>
         <button type="submit" class="btn">${srv ? '다시 연결하기' : '연결하기'}</button></form>
@@ -923,12 +923,34 @@ async function readOne(p) {
 async function crop(src, box) {
   const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
   let [l, t, r, b] = Array.isArray(box) && box.length === 4 ? box : [0, 0, 1, 1];
+  if (l <= .01 && t <= .01 && r >= .99 && b >= .99) [l, t, r, b] = autoBox(im);   // 무료 글자 인식은 명함 위치를 모른다 → 밝은 명함 영역을 직접 찾는다
   if (!(r - l > .2 && b - t > .2)) [l, t, r, b] = [0, 0, 1, 1];
   const pad = .015; l = Math.max(0, l - pad); t = Math.max(0, t - pad); r = Math.min(1, r + pad); b = Math.min(1, b + pad);
   const sw = (r - l) * im.width, sh = (b - t) * im.height, s = Math.min(1, 1100 / Math.max(sw, sh));
   const c = document.createElement('canvas'); c.width = Math.round(sw * s); c.height = Math.round(sh * s);
   c.getContext('2d').drawImage(im, l * im.width, t * im.height, sw, sh, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', .8);
+}
+
+/* 책상 위 명함 찾기: 작게 줄인 사진에서 밝기 기준(오츠)으로 '밝은 칸'을 가르고,
+   밝은 칸이 40% 넘는 줄·열의 범위를 명함으로 본다. 어두운 명함이거나 이상하면 원본 그대로 */
+function autoBox(im) {
+  try {
+    const W = 160, H = Math.max(1, Math.round(im.height / im.width * W)), c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(im, 0, 0, W, H);
+    const d = g.getImageData(0, 0, W, H).data, L = new Uint8Array(W * H), hist = new Array(256).fill(0);
+    for (let i = 0; i < W * H; i++) { const v = (d[i * 4] * 299 + d[i * 4 + 1] * 587 + d[i * 4 + 2] * 114) / 1000 | 0; L[i] = v; hist[v]++; }
+    let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
+    let sB = 0, wB = 0, best = 0, th = 128;
+    for (let i = 0; i < 256; i++) { wB += hist[i]; if (!wB) continue; const wF = W * H - wB; if (!wF) break; sB += i * hist[i];
+      const mB = sB / wB, mF = (sum - sB) / wF, v = wB * wF * (mB - mF) ** 2; if (v > best) { best = v; th = i; } }
+    const rows = [], cols = new Array(W).fill(0);
+    for (let y = 0; y < H; y++) { let n = 0; for (let x = 0; x < W; x++) if (L[y * W + x] > th) { n++; cols[x]++; } rows.push(n / W); }
+    const span = (a, lim) => { let s0 = a.findIndex(v => v > lim), s1 = a.length - 1 - [...a].reverse().findIndex(v => v > lim); return s0 < 0 ? null : [s0, s1]; };
+    const ry = span(rows, .4), rx = span(cols.map(v => v / H), .4); if (!ry || !rx) return [0, 0, 1, 1];
+    const bx = [rx[0] / W, ry[0] / H, (rx[1] + 1) / W, (ry[1] + 1) / H], area = (bx[2] - bx[0]) * (bx[3] - bx[1]);
+    return area > .15 && area < .95 ? bx : [0, 0, 1, 1];
+  } catch (e) { return [0, 0, 1, 1]; }
 }
 
 /* ── 연락처 파일(vCard) ── 아이폰에서 열면 '연락처에 추가' 화면이 뜬다 */

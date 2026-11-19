@@ -5,8 +5,8 @@
    1) script.google.com → 새 프로젝트 → 이 파일 내용을 Code.gs 에 붙여 넣기
    2) 위 함수 고르는 칸에서 setup 실행 → 권한 허용 → 실행 기록에 나온 '서버 주소·연결 암호'는 배포 뒤에 다시 확인
    3) 배포 → 새 배포 → 유형 '웹 앱', 실행 '나', 액세스 '모든 사용자' → 배포 → /exec 로 끝나는 주소 복사
-   4) (권장) 프로젝트 설정 → 스크립트 속성 → ANTHROPIC_API_KEY 에 Claude API 키를 넣으면 AI 가 명함을 읽어요.
-      키가 없으면 구글 드라이브 글자 인식(OCR)으로 읽어요(무료, 정확도는 조금 낮음).
+   4) 명함 읽기는 구글 드라이브 글자 인식(OCR, 무료)으로 해요. 따로 넣을 키가 없어요.
+      (나중에 유료 AI 로 바꾸고 싶으면 스크립트 속성 ANTHROPIC_API_KEY 에 키를 넣으면 돼요)
    5) 앱 설정 탭에 서버 주소와 연결 암호를 넣고 '연결하기'
    코드를 고치면: 배포 → 배포 관리 → 연필 → 버전 '새 버전' → 배포 (주소는 그대로) */
 
@@ -128,6 +128,7 @@ function scan_(img) {
   let r, via;
   if (key) { try { r = claude_(b64, key); via = 'ai'; } catch (e) { console.warn('AI 읽기 실패 → OCR', e.message); r = null; } }
   if (!r) { r = parse_(ocr_(b64)); via = 'ocr'; }
+  learn_(r);
   r.cat = CATS.indexOf(r.cat) >= 0 && r.cat !== '기타' ? r.cat : classify_(r.org, r.email, r.dept);
   if (MY_COMPANY.test(r.org || '')) r.cat = '사내';
   ['mobile', 'tel', 'fax'].forEach(k => r[k] = phone_(r[k]));
@@ -227,6 +228,20 @@ function parse_(text) {
   if (!r.org && r.email) r.org = r.email.split('@')[1].split('.')[0];
   if (!r.name) r.name = '(이름 확인 필요)';
   return r;
+}
+
+/* 이미 넣어 둔 명함에서 배우기: 같은 회사 메일 주소(@rian.kr)면 그 명함의 기관 이름·분류를,
+   같은 기관이면 그 분류를 그대로 쓴다. 한 번 고쳐 두면 다음 명함부터 맞게 들어간다.
+   korea.kr·gmail 처럼 여러 기관이 함께 쓰는 주소는 기관을 가르지 못하므로 빼고 본다 */
+const SHARED_MAIL = /@(korea\.kr|gmail\.com|naver\.com|daum\.net|hanmail\.net|nate\.com|kakao\.com|outlook\.com|hotmail\.com)$/i;
+function learn_(r) {
+  const cards = list_().filter(c => c.checked);   // 사람이 확인한 명함만 믿는다
+  const dom = r.email && !SHARED_MAIL.test(r.email) ? r.email.split('@')[1].toLowerCase() : '';
+  const same = dom && cards.find(c => c.email && c.email.toLowerCase().endsWith('@' + dom) && c.org);
+  if (same) { r.org = same.org; r.cat = same.cat; return; }
+  const key = s => String(s || '').replace(/\s|\(주\)|㈜|주식회사/g, '');
+  const o = r.org && cards.find(c => key(c.org) === key(r.org));
+  if (o) { r.org = o.org; r.cat = o.cat; }
 }
 
 /* 분류 규칙 — AI 가 없거나 '기타'라고 했을 때 */
