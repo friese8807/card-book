@@ -248,7 +248,7 @@ button{touch-action:manipulation}
 .rm-sum{font-size:16px;margin:4px 0 10px}.rm-cats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.rm-cats span{background:var(--chip);border-radius:8px;padding:5px 9px;font-size:13px}
 .rm-list{border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:14px;line-height:1.9}.rm-list .m{color:var(--muted)}.rm-note{color:var(--muted);font-size:13.5px;line-height:1.5;word-break:keep-all;margin:12px 0}
 .facts>.amap{display:block;padding:0 0 12px;border-bottom:1px solid var(--line)}
-.amap .mapbox{position:relative;height:170px;border-radius:12px;overflow:hidden;background:var(--chip);display:grid;place-items:center;color:var(--muted);font-size:13px;text-align:center;line-height:1.5;word-break:keep-all;padding:0}
+.amap .mapbox{position:relative;min-height:170px;border-radius:12px;overflow:hidden;background:var(--chip);display:grid;place-items:center;color:var(--muted);font-size:13px;text-align:center;line-height:1.5;word-break:keep-all;padding:12px}
 .amap .mapbox>.kmap{position:absolute;inset:0}
 .amap .mapbox .tapcover{position:absolute;inset:0;z-index:5;border:0;background:none}
 .amap .pin{width:16px;height:16px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);transform:translate(-50%,-50%)}
@@ -626,7 +626,7 @@ const AppKit = (() => {
 })();
 </script>
 <script>
-const BUILD = '1795153159';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
+const BUILD = '1795153432';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
 AppKit.fixViewport({ gap: false });   // 홈 화면 앱에서 탭바가 아래로 잘려서 보정을 끈다(2026-11-20 확인)
 AppKit.autoUpdate(BUILD);
 AppKit.showErrors(BUILD);
@@ -872,16 +872,16 @@ const tabs = AppKit.tabs({
 /* ── 카카오 지도 ── 명함 주소를 좌표로 바꿔 작은 지도에 핀 하나. 지도를 누르면 카카오맵이 열린다.
    JavaScript 키(공개용, developers.kakao.com 에 friese8807.github.io 를 등록한 것)만 쓴다. 키는 설정에서 넣고 이 휴대폰에 저장 */
 const KMAP = (() => {
-  let st = 'idle', wait = [];
+  let st = 'idle', wait = [], why = '';
   const key = () => LS.get('kakaoKey', '');
   const load = () => new Promise(ok => {
     if (st === 'ready') return ok(true); if (!key()) return ok(false);
     wait.push(ok); if (st === 'loading') return; st = 'loading';
-    const done = v => { st = v ? 'ready' : 'idle'; const w = wait; wait = []; w.forEach(f => f(v)); };
-    const t = setTimeout(() => done(false), 8000), sc = document.createElement('script');
+    const done = (v, r = '') => { st = v ? 'ready' : 'idle'; why = r; const w = wait; wait = []; w.forEach(f => f(v)); };
+    const t = setTimeout(() => done(false, '시간 초과'), 8000), sc = document.createElement('script');
     sc.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key())}&libraries=services&autoload=false`; sc.referrerPolicy = 'origin';
-    sc.onload = () => { try { kakao.maps.load(() => { clearTimeout(t); done(true); }); } catch (e) { clearTimeout(t); done(false); } };
-    sc.onerror = () => { clearTimeout(t); sc.remove(); done(false); };
+    sc.onload = () => { try { kakao.maps.load(() => { clearTimeout(t); done(true); }); } catch (e) { clearTimeout(t); sc.remove(); done(false, '키 거절'); } };
+    sc.onerror = () => { clearTimeout(t); sc.remove(); done(false, '키 거절'); };   // 등록 안 된 주소·틀린 키·카카오맵 사용 꺼짐이면 카카오가 401/403 으로 막는다
     document.head.append(sc);
   });
   /* 주소 → 좌표. '세종시 다솜2로 94 정부세종청사 5동'처럼 뒤에 붙은 건물 이름은 잘라서 한 번 더, 그래도 없으면 기관 이름으로 장소 검색. 찾은 좌표는 저장해 둔다 */
@@ -890,20 +890,23 @@ const KMAP = (() => {
     if (c.addr in G) return ok(G[c.addr]);
     const K = kakao.maps.services, gc = new K.Geocoder(), ps = new K.Places();
     const save = v => { G[c.addr] = v; LS.set('geo', G); ok(v); };
+    const fail = () => ok(null);   // 검색 자체가 막힌 것(ERROR)은 '없는 주소'로 저장하지 않는다
     const short = c.addr.replace(/\(.*?\)/g, ' ').match(/^.*?(로|길|동|리|가)\s*\d+(-\d+)?/)?.[0];
     const tries = [c.addr, short].filter((v, i, a) => v && a.indexOf(v) === i);
     const next = () => {
       const q = tries.shift();
-      if (q) return gc.addressSearch(q, (r, s) => s === K.Status.OK ? save([+r[0].y, +r[0].x]) : next());
-      if (c.org) return ps.keywordSearch(c.org, (r, s) => save(s === K.Status.OK ? [+r[0].y, +r[0].x] : 0));
+      if (q) return gc.addressSearch(q, (r, s) => s === K.Status.OK ? save([+r[0].y, +r[0].x]) : s === K.Status.ERROR ? fail() : next());
+      if (c.org) return ps.keywordSearch(c.org, (r, s) => s === K.Status.ERROR ? fail() : save(s === K.Status.OK ? [+r[0].y, +r[0].x] : 0));
       save(0);
     };
     next();
   });
   async function show(box, c) {
     if (!box || !key()) return;
-    if (!await load()) { box.innerHTML = '카카오 지도를 불러오지 못했어요.<br>설정의 키와 등록한 사이트 주소를 확인해 주세요'; return; }
+    if (!await load()) { box.innerHTML = '<div>' + (why === '시간 초과' ? '카카오 지도가 응답하지 않아요.<br>인터넷 연결을 확인하고 명함을 다시 열어 주세요'
+      : `카카오가 이 키를 거절했어요 (키 끝 ${esc(key().slice(-4))})<br>① JavaScript 키가 맞는지<br>② 그 키에 <b>${esc(location.origin)}</b> 도메인이 등록됐는지<br>③ 카카오맵 사용 설정이 켜져 있는지 확인해 주세요`) + '</div>'; return; }
     const pt = await geo(c); if (!box.isConnected) return;
+    if (pt === null) { box.innerHTML = '<div>카카오 주소 검색이 막혀 있어요.<br>카카오맵 사용 설정이 켜져 있는지 확인해 주세요</div>'; return; }
     if (!pt) { box.textContent = '이 주소는 지도에서 찾지 못했어요'; return; }
     const K = kakao.maps, at = new K.LatLng(pt[0], pt[1]), nm = encodeURIComponent(c.org || c.name);
     box.innerHTML = '<div class="kmap"></div><button type="button" class="tapcover" aria-label="카카오맵에서 크게 보기"></button>';
@@ -950,7 +953,7 @@ async function openCard(id) {
       ${row('팩스', esc(c.fax || ''))}
       ${row('이메일', c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '')}
       ${row('주소', c.addr ? `<a href="https://map.kakao.com/link/search/${encodeURIComponent(c.addr)}" target="_blank" rel="noopener">${esc(c.addr)}</a>` : '')}
-      ${c.addr ? `<div class="amap" data-noswipe><div class="mapbox" id="amap">${KMAP.key() ? '지도를 불러오는 중…' : '설정에서 카카오 지도 키를 넣으면<br>여기에 지도가 보여요'}</div>
+      ${c.addr ? `<div class="amap" data-noswipe><div class="mapbox" id="amap"><div>${KMAP.key() ? '지도를 불러오는 중…' : '설정에서 카카오 지도 키를 넣으면<br>여기에 지도가 보여요'}</div></div>
         <div class="mbtn"><a href="https://map.kakao.com/link/search/${encodeURIComponent(c.addr)}" target="_blank" rel="noopener" id="amapOpen">카카오맵에서 보기</a><a href="https://map.kakao.com/link/search/${encodeURIComponent(c.addr)}" target="_blank" rel="noopener" id="amapTo">길찾기</a></div></div>` : ''}
       ${row('홈페이지', c.web ? `<a href="${/^https?:/.test(c.web) ? '' : 'https://'}${esc(c.web)}" target="_blank" rel="noopener">${esc(c.web)}</a>` : '')}
       ${row('분류', esc(c.cat || ''))}
