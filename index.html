@@ -247,13 +247,19 @@ button{touch-action:manipulation}
 .tg{display:flex;align-items:center;gap:10px;margin-top:10px;font-weight:700;font-size:15px}.tg input{width:22px;height:22px;accent-color:var(--accent)}
 .rm-sum{font-size:16px;margin:4px 0 10px}.rm-cats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.rm-cats span{background:var(--chip);border-radius:8px;padding:5px 9px;font-size:13px}
 .rm-list{border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:14px;line-height:1.9}.rm-list .m{color:var(--muted)}.rm-note{color:var(--muted);font-size:13.5px;line-height:1.5;word-break:keep-all;margin:12px 0}
+.facts>.amap{display:block;padding:0 0 12px;border-bottom:1px solid var(--line)}
+.amap .mapbox{position:relative;height:170px;border-radius:12px;overflow:hidden;background:var(--chip);display:grid;place-items:center;color:var(--muted);font-size:13px;text-align:center;line-height:1.5;word-break:keep-all;padding:0}
+.amap .mapbox>.kmap{position:absolute;inset:0}
+.amap .mapbox .tapcover{position:absolute;inset:0;z-index:5;border:0;background:none}
+.amap .pin{width:16px;height:16px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);transform:translate(-50%,-50%)}
+.amap .mbtn{display:flex;gap:8px;margin-top:8px}.amap .mbtn a{flex:1;text-align:center;border-radius:10px;background:var(--chip);color:var(--ink);font-weight:700;font-size:13.5px;padding:9px 6px}
 .chk span{flex:1}.chk button{flex:none;border:0;border-radius:9px;background:var(--new-ink);color:var(--new);font:inherit;font-weight:800;font-size:13px;padding:8px 12px}
 .acts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0 6px}
 .acts a,.acts button{display:grid;justify-items:center;gap:5px;padding:10px 0;border-radius:14px;background:var(--p-blue);color:var(--p-blue-ink);text-decoration:none;font:inherit;font-size:12px;font-weight:700;border:0}
 .acts .off{opacity:.35;pointer-events:none}
 .facts{margin-top:10px;border-top:2px solid var(--accent)}
-.facts div{display:grid;grid-template-columns:5.2em 1fr;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line);font-size:14.5px;line-height:1.45}
-.facts span:first-child{color:var(--muted);font-size:13px;padding-top:1px}
+.facts>div{display:grid;grid-template-columns:5.2em 1fr;gap:10px;padding:10px 2px;border-bottom:1px solid var(--line);font-size:14.5px;line-height:1.45}
+.facts>div>span:first-child{color:var(--muted);font-size:13px;padding-top:1px}
 .facts a{color:var(--p-blue-ink);text-decoration:none;word-break:break-all}
 .memo{white-space:pre-wrap;word-break:keep-all}
 
@@ -593,7 +599,7 @@ const AppKit = (() => {
 })();
 </script>
 <script>
-const BUILD = '1795148663';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
+const BUILD = '1795152131';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
 AppKit.fixViewport({ gap: false });   // 홈 화면 앱에서 탭바가 아래로 잘려서 보정을 끈다(2026-11-20 확인)
 AppKit.autoUpdate(BUILD);
 AppKit.showErrors(BUILD);
@@ -822,6 +828,9 @@ const tabs = AppKit.tabs({
       ${S.demo ? `<div class="card"><h2>예시로 둘러보는 중</h2><p>예시 명함은 저장되지 않아요.</p><button type="button" class="btn" data-demo="off">예시 끄기</button></div>` : ''}
       <div class="card"><h2>리멤버에서 가져오기</h2><p>리멤버 앱 → 설정 → 명함 내보내기로 메일에 온 엑셀 파일을 고르면 한 번에 넣어요. 이미 있는 명함은 건너뛰어요.</p>
         <label class="btn sub" style="cursor:pointer;margin-top:10px">${IC.save}엑셀 파일 고르기<input type="file" id="rmfile" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden></label></div>
+      <div class="card"><h2>카카오 지도</h2><p>명함을 열면 주소 아래에 지도를 보여 줘요. 카카오 개발자 사이트의 <b>JavaScript 키</b>를 넣어 주세요.</p>
+        <form class="form" id="kkf" style="margin-top:10px"><label>JavaScript 키<input name="key" type="text" value="${esc(LS.get('kakaoKey', ''))}" autocapitalize="off" autocomplete="off" placeholder="32자리 영문·숫자"></label>
+        <button type="submit" class="btn sub">${LS.get('kakaoKey', '') ? '키 바꾸기' : '키 저장'}</button></form></div>
       <div class="card"><h2>아이폰 연락처</h2><p>명함을 확인('맞아요')하거나 직접 넣으면 연락처 화면을 바로 띄워요. '새로운 연락처 생성'만 누르면 돼요.</p>
         <label class="tg"><input type="checkbox" data-autovcf ${S.autoVcf ? 'checked' : ''}><span>확인할 때 연락처에도 넣기</span></label></div>
       <div class="card"><h2>내보내기·백업</h2><p>${srv ? '명함은 구글 시트(명함첩)와 드라이브(명함첩 사진 폴더)에 저장돼요.' : '서버를 연결하기 전에는 명함이 이 휴대폰 안에만 있어요.'}</p>
@@ -831,6 +840,56 @@ const tabs = AppKit.tabs({
     }
   },
 });
+
+/* ── 카카오 지도 ── 명함 주소를 좌표로 바꿔 작은 지도에 핀 하나. 지도를 누르면 카카오맵이 열린다.
+   JavaScript 키(공개용, developers.kakao.com 에 friese8807.github.io 를 등록한 것)만 쓴다. 키는 설정에서 넣고 이 휴대폰에 저장 */
+const KMAP = (() => {
+  let st = 'idle', wait = [];
+  const key = () => LS.get('kakaoKey', '');
+  const load = () => new Promise(ok => {
+    if (st === 'ready') return ok(true); if (!key()) return ok(false);
+    wait.push(ok); if (st === 'loading') return; st = 'loading';
+    const done = v => { st = v ? 'ready' : 'idle'; const w = wait; wait = []; w.forEach(f => f(v)); };
+    const t = setTimeout(() => done(false), 8000), sc = document.createElement('script');
+    sc.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key())}&libraries=services&autoload=false`; sc.referrerPolicy = 'origin';
+    sc.onload = () => { try { kakao.maps.load(() => { clearTimeout(t); done(true); }); } catch (e) { clearTimeout(t); done(false); } };
+    sc.onerror = () => { clearTimeout(t); sc.remove(); done(false); };
+    document.head.append(sc);
+  });
+  /* 주소 → 좌표. '세종시 다솜2로 94 정부세종청사 5동'처럼 뒤에 붙은 건물 이름은 잘라서 한 번 더, 그래도 없으면 기관 이름으로 장소 검색. 찾은 좌표는 저장해 둔다 */
+  const G = LS.get('geo', {});
+  const geo = c => new Promise(ok => {
+    if (c.addr in G) return ok(G[c.addr]);
+    const K = kakao.maps.services, gc = new K.Geocoder(), ps = new K.Places();
+    const save = v => { G[c.addr] = v; LS.set('geo', G); ok(v); };
+    const short = c.addr.replace(/\(.*?\)/g, ' ').match(/^.*?(로|길|동|리|가)\s*\d+(-\d+)?/)?.[0];
+    const tries = [c.addr, short].filter((v, i, a) => v && a.indexOf(v) === i);
+    const next = () => {
+      const q = tries.shift();
+      if (q) return gc.addressSearch(q, (r, s) => s === K.Status.OK ? save([+r[0].y, +r[0].x]) : next());
+      if (c.org) return ps.keywordSearch(c.org, (r, s) => save(s === K.Status.OK ? [+r[0].y, +r[0].x] : 0));
+      save(0);
+    };
+    next();
+  });
+  async function show(box, c) {
+    if (!box || !key()) return;
+    if (!await load()) { box.innerHTML = '카카오 지도를 불러오지 못했어요.<br>설정의 키와 등록한 사이트 주소를 확인해 주세요'; return; }
+    const pt = await geo(c); if (!box.isConnected) return;
+    if (!pt) { box.textContent = '이 주소는 지도에서 찾지 못했어요'; return; }
+    const K = kakao.maps, at = new K.LatLng(pt[0], pt[1]), nm = encodeURIComponent(c.org || c.name);
+    box.innerHTML = '<div class="kmap"></div><button type="button" class="tapcover" aria-label="카카오맵에서 크게 보기"></button>';
+    const m = new K.Map(box.firstChild, { center: at, level: 4, draggable: false, scrollwheel: false, disableDoubleClickZoom: true });
+    m.setZoomable(false);
+    new K.CustomOverlay({ position: at, content: '<div class="pin"></div>', zIndex: 3 }).setMap(m);
+    const view = `https://map.kakao.com/link/map/${nm},${pt[0]},${pt[1]}`;
+    box.lastChild.onclick = () => window.open(view, '_blank');
+    const o = document.getElementById('amapOpen'), to = document.getElementById('amapTo');
+    if (o) o.href = view; if (to) to.href = `https://map.kakao.com/link/to/${nm},${pt[0]},${pt[1]}`;
+    setTimeout(() => { if (box.isConnected) { m.relayout(); m.setCenter(at); } }, 350);   // 시트가 다 올라온 뒤 크기 다시 재기
+  }
+  return { key, show, reset: () => { st = 'idle'; } };
+})();
 
 /* ── 시트 ── */
 const sheet = AppKit.sheet('#sheet');
@@ -863,6 +922,8 @@ async function openCard(id) {
       ${row('팩스', esc(c.fax || ''))}
       ${row('이메일', c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : '')}
       ${row('주소', c.addr ? `<a href="https://map.kakao.com/link/search/${encodeURIComponent(c.addr)}" target="_blank" rel="noopener">${esc(c.addr)}</a>` : '')}
+      ${c.addr ? `<div class="amap" data-noswipe><div class="mapbox" id="amap">${KMAP.key() ? '지도를 불러오는 중…' : '설정에서 카카오 지도 키를 넣으면<br>여기에 지도가 보여요'}</div>
+        <div class="mbtn"><a href="https://map.kakao.com/link/search/${encodeURIComponent(c.addr)}" target="_blank" rel="noopener" id="amapOpen">카카오맵에서 보기</a><a href="https://map.kakao.com/link/search/${encodeURIComponent(c.addr)}" target="_blank" rel="noopener" id="amapTo">길찾기</a></div></div>` : ''}
       ${row('홈페이지', c.web ? `<a href="${/^https?:/.test(c.web) ? '' : 'https://'}${esc(c.web)}" target="_blank" rel="noopener">${esc(c.web)}</a>` : '')}
       ${row('분류', esc(c.cat || ''))}
       ${row('등록일', esc(AppKit.kstDate(new Date(c.at)).replace(/-/g, '. ')))}
@@ -872,6 +933,7 @@ async function openCard(id) {
     <div class="row2"><button type="button" class="btn sub" data-fav>${c.fav ? '★ 즐겨찾기 빼기' : '☆ 즐겨찾기'}</button><button type="button" class="btn sub" data-edit>고치기</button></div>
     <button type="button" class="btn del" data-delete>명함 지우기</button>`;
   sheet.open(); SB().scrollTop = 0;
+  if (c.addr) KMAP.show(document.getElementById('amap'), c);
 }
 
 /* ── 넣기·고치기 ── */
@@ -1129,6 +1191,12 @@ document.addEventListener('submit', async e => {
       AppKit.toast(`연결했어요 · 서버 명함 ${d.count}장`); await refresh(); tabs.go('list'); }
     catch (err) { S.srv = old; AppKit.toast(plain(err)); }
     return;
+  }
+  if (e.target.id === 'kkf') {
+    const k = e.target.key.value.trim();
+    if (k && !/^[0-9a-f]{32}$/i.test(k)) return AppKit.toast('JavaScript 키는 32자리 영문·숫자예요. REST API 키가 아닌지 확인해 주세요');
+    if (k) LS.set('kakaoKey', k); else LS.del('kakaoKey');
+    location.reload(); return;   // 다른 키로 SDK 를 다시 불러오려면 새로 열어야 한다
   }
   if (e.target.id !== 'fm') return;
   if (S.demo) return AppKit.toast('예시에서는 저장되지 않아요. 설정에서 예시를 꺼 주세요');
