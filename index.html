@@ -208,6 +208,7 @@ button{touch-action:manipulation}
 
 /* 기관 탭 */
 .org{display:flex;align-items:center;gap:12px;width:100%;border:0;border-bottom:1px solid var(--line);background:none;color:inherit;font:inherit;text-align:left;padding:12px max(16px,var(--sar)) 12px max(16px,var(--sal))}
+.org .ic.lg{font-weight:800;font-size:18px;overflow:hidden}.org .ic.lg.has{background:#fff;border:1px solid var(--line)}.org .ic.lg img{width:100%;height:100%;object-fit:contain;padding:6px;box-sizing:border-box}
 .org .ic,.ak-empty .ic{flex:none;width:42px;height:42px;border-radius:12px;display:grid;place-items:center}
 .org .tx{flex:1;min-width:0}.org .nm{font-weight:800;font-size:16px;word-break:keep-all}
 .org .sub{font-size:13px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -314,7 +315,7 @@ button{touch-action:manipulation}
 <button class="fab" type="button" data-shoot aria-label="명함 찍기"><svg class="ak-ic" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
 <nav class="ak-tabs" aria-label="메뉴">
   <button type="button" data-tab="list"><span class="i">📇</span>명함</button>
-  <button type="button" data-tab="org"><span class="i">🏛️</span>기관</button>
+  <button type="button" data-tab="org"><span class="i">🏛️</span>기관&amp;기업</button>
   <button type="button" data-tab="set"><span class="i">⚙️</span>설정</button>
 </nav>
 
@@ -627,7 +628,7 @@ const AppKit = (() => {
 })();
 </script>
 <script>
-const BUILD = '1795153772';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
+const BUILD = '1795155878';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
 AppKit.fixViewport({ gap: false });   // 홈 화면 앱에서 탭바가 아래로 잘려서 보정을 끈다(2026-11-20 확인)
 AppKit.autoUpdate(BUILD);
 AppKit.showErrors(BUILD);
@@ -826,6 +827,59 @@ function emptyHome() {
     ${S.srv ? '' : '<button type="button" class="btn sub" data-goset>서버 연결하기</button>'}<button type="button" class="btn sub" data-demo="on">예시로 둘러보기</button></div></div>`;
 }
 
+/* ── 기관·기업 로고(CI·MI) ── 기관 홈페이지의 대표 아이콘을 가져온다.
+   홈페이지 주소: ① 그 기관 명함들의 회사 메일 주소(@korea.kr 같은 공용 메일 제외) ② 홈페이지 칸 ③ 아래 정부 기관 표.
+   못 찾으면 기관 이름 첫 글자 칸. 찾은 결과는 이 휴대폰에 기억해 두고 다시 받지 않는다 */
+const LOGO = (() => {
+  const GOV = [   // 공용 메일(korea.kr)을 쓰는 곳·메일이 없는 회사 — 이름에 들어 있으면 그 홈페이지
+    ['국립해양조사원', 'khoa.go.kr'], ['해양조사원', 'khoa.go.kr'], ['국토지리정보원', 'ngii.go.kr'], ['국립수산과학원', 'nifs.go.kr'], ['국립재난안전연구원', 'ndmi.go.kr'],
+    ['해양경찰', 'kcg.go.kr'], ['해양경비안전', 'kcg.go.kr'], ['지방해양수산청', 'mof.go.kr'], ['해양수산부', 'mof.go.kr'], ['해양공간정책과', 'mof.go.kr'], ['해양수산과학기술정책과', 'mof.go.kr'],
+    ['국토교통부', 'molit.go.kr'], ['행정안전부', 'mois.go.kr'], ['국민안전처', 'mois.go.kr'], ['과학기술정보통신부', 'msit.go.kr'], ['기획재정부', 'moef.go.kr'],
+    ['산업통상자원부', 'motie.go.kr'], ['환경부', 'me.go.kr'], ['국방부', 'mnd.go.kr'], ['산림청', 'forest.go.kr'], ['기상청', 'kma.go.kr'], ['조달청', 'pps.go.kr'], ['통계청', 'kostat.go.kr'],
+    ['부산광역시', 'busan.go.kr'], ['서울특별시', 'seoul.go.kr'], ['세종특별자치시', 'sejong.go.kr'], ['전라남도', 'jeonnam.go.kr'], ['경상남도', 'gyeongnam.go.kr'], ['제주특별자치도', 'jeju.go.kr'],
+    ['한국해양과학기술원', 'kiost.ac.kr'], ['해양환경공단', 'koem.or.kr'], ['한국어촌어항공단', 'fipa.or.kr'], ['극지연구소', 'kopri.re.kr'], ['해양수산과학기술진흥원', 'kimst.re.kr'],
+    ['한국지능정보사회진흥원', 'nia.or.kr'], ['한국국토정보공사', 'lx.or.kr'], ['한국공간정보산업협회', 'kasm.or.kr'], ['선박해양플랜트연구소', 'kriso.re.kr'],
+    ['전남대학교', 'jnu.ac.kr'], ['광주대학교', 'gwangju.ac.kr'], ['전주대학교', 'jj.ac.kr'], ['부경대학교', 'pknu.ac.kr'], ['한국해양대학교', 'kmou.ac.kr'], ['올포랜드', 'allforland.com'],
+    ['중앙항업', 'caas.co.kr'], ['신한항업', 'shas.co.kr'], ['삼영이엔씨', 'samyungenc.com'], ['코오롱인더스트리', 'kolonindustries.com'], ['한화호텔', 'hanwhahotelsnresorts.com'],
+  ].sort((a, b) => b[0].length - a[0].length);
+  const SHARED = /^(korea\.kr|gmail\.com|naver\.com|daum\.net|hanmail\.net|nate\.com|kakao\.com|outlook\.com|hotmail\.com|icloud\.com|yahoo\.(com|co\.kr))$/i;
+  const base = d => d.toLowerCase().replace(/^(www|mail|m)\./, '');
+  function domain(org, cards) {
+    const n = {};
+    cards.forEach(c => { const d = (c.email || '').split('@')[1]; if (d && !SHARED.test(d.trim())) { const k = base(d.trim()); n[k] = (n[k] || 0) + 1; } });
+    const best = Object.entries(n).sort((a, b) => b[1] - a[1])[0]; if (best) return best[0];
+    const w = cards.map(c => c.web).find(Boolean); if (w) { try { return base(new URL(/^https?:/.test(w) ? w : 'https://' + w).hostname); } catch (e) {} }
+    const k = org.replace(/\s/g, ''); return (GOV.find(([name]) => k.includes(name)) || [])[1] || '';
+  }
+  const initial = o => (o.replace(/\(.*?\)|㈜|주식회사|\s/g, '') || o || '?').slice(0, 1).toUpperCase();
+  const tile = (o, cards) => { const d = domain(o, cards || []); return `<div class="ic lg c${hue(o)}"${d ? ` data-logo="${esc(d)}"` : ''}><b>${esc(initial(o))}</b></div>`; };
+  const M = LS.get('logos', {});   // 홈페이지 → 그림 주소('' 은 없음)
+  const SRC = d => [`https://www.google.com/s2/favicons?domain=${encodeURIComponent(d)}&sz=128`, `https://icons.duckduckgo.com/ip3/${encodeURIComponent(d)}.ico`];
+  const show = (el, url) => { el.classList.add('has'); el.innerHTML = `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer">`; };
+  function find(d) {
+    if (d in M) return Promise.resolve(M[d]);
+    const list = SRC(d);
+    return new Promise(ok => {
+      const next = () => {
+        const u = list.shift(); if (!u) { M[d] = ''; LS.set('logos', M); return ok(''); }
+        const im = new Image(); im.referrerPolicy = 'no-referrer';
+        im.onload = () => { if (im.naturalWidth > 16 || !list.length && im.naturalWidth >= 16) { M[d] = u; LS.set('logos', M); ok(u); } else next(); };   // 구글이 못 찾으면 16px 지구본을 준다
+        im.onerror = next; im.src = u;
+      };
+      next();
+    });
+  }
+  /* 화면에 보이는 칸부터 하나씩(한꺼번에 수백 개를 부르지 않게) */
+  let io;
+  function load(root) {
+    io?.disconnect();
+    io = new IntersectionObserver(es => es.forEach(e => { if (!e.isIntersecting) return; io.unobserve(e.target); const el = e.target, d = el.dataset.logo;
+      find(d).then(u => { if (u && el.isConnected) show(el, u); }); }), { rootMargin: '200px' });
+    root.querySelectorAll('.ic.lg[data-logo]').forEach(el => { const d = el.dataset.logo; if (M[d]) show(el, M[d]); else if (!(d in M)) io.observe(el); });
+  }
+  return { tile, load, domain };
+})();
+
 const tabs = AppKit.tabs({
   ids: ['list', 'org', 'set'], remember: 'card-book.tab',
   render(id) {
@@ -841,10 +895,11 @@ const tabs = AppKit.tabs({
       drawList();
     }
     if (id === 'org') {
-      const g = {}; list().forEach(c => { const k = c.org || '기관 없음'; (g[k] ||= { n: 0, cat: c.cat || '기타', people: [] }).n++; g[k].people.push(c.name); });
+      const g = {}; list().forEach(c => { const k = c.org || '기관 없음'; (g[k] ||= { n: 0, cat: c.cat || '기타', people: [], cards: [] }).n++; g[k].people.push(c.name); g[k].cards.push(c); });
       const cats = CATS.map(cat => [cat, Object.entries(g).filter(([, v]) => v.cat === cat).sort((a, b) => b[1].n - a[1].n || a[0].localeCompare(b[0], 'ko'))]).filter(x => x[1].length);
       sc.innerHTML = !cats.length ? emptyHome() : cats.map(([cat, orgs]) => `<div class="gh">${cat}<span>${orgs.length}곳</span></div>` +
-        orgs.map(([o, v]) => `<button type="button" class="org" data-goorg="${esc(o)}"><div class="ic c${hue(o)}">${IC.bld}</div><div class="tx"><div class="nm">${brk(o)}</div><div class="sub">${esc(v.people.slice(0, 4).join(', '))}${v.people.length > 4 ? ' 외' : ''}</div></div><span class="n">${v.n}</span></button>`).join('')).join('') + '<div style="height:90px"></div>';
+        orgs.map(([o, v]) => `<button type="button" class="org" data-goorg="${esc(o)}">${LOGO.tile(o, v.cards)}<div class="tx"><div class="nm">${brk(o)}</div><div class="sub">${esc(v.people.slice(0, 4).join(', '))}${v.people.length > 4 ? ' 외' : ''}</div></div><span class="n">${v.n}</span></button>`).join('')).join('') + '<div style="height:90px"></div>';
+      LOGO.load(sc);
     }
     if (id === 'set') {
       const srv = S.srv;
@@ -986,6 +1041,7 @@ async function openForm(id, pre = {}) {
       <div class="two">${f('mobile', '휴대폰', 'tel')}${f('tel', '사무실', 'tel')}</div>
       ${f('email', '이메일', 'email', 'autocapitalize="off"')}
       ${f('addr', '주소')}
+      ${f('web', '홈페이지 (로고를 가져와요)', 'text', 'inputmode="url" autocapitalize="off" placeholder="www.회사.co.kr"')}
       <div class="two">${f('fax', '팩스', 'tel')}${f('place', '만난 곳')}</div>
       <label>메모<textarea name="memo">${esc(c.memo || '')}</textarea></label>
       <button type="submit" class="btn">저장</button>
