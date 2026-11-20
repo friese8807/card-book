@@ -265,6 +265,7 @@ button{touch-action:manipulation}
 .cam .cam-msg{position:absolute;left:16px;right:16px;top:calc(env(safe-area-inset-top) + 72px);text-align:center;z-index:3;font-weight:700;font-size:15px;line-height:1.5;text-shadow:0 1px 3px rgba(0,0,0,.6);word-break:keep-all}
 .cam .cam-msg .pill{margin-top:12px;text-shadow:none}
 .cam .cam-msg.ok{color:var(--ok)}
+.cam .cam-msg{top:var(--msgy,62%)}
 .cam .cam-bot{position:absolute;left:0;right:0;bottom:0;padding:14px 18px calc(env(safe-area-inset-bottom) + 18px);display:grid;grid-template-columns:1fr auto 1fr;align-items:center;z-index:3;background:linear-gradient(transparent,rgba(0,0,0,.55))}
 .cam .side{border:0;background:none;color:#fff;font:inherit;font-size:12.5px;font-weight:700;display:flex;flex-direction:column;align-items:center;gap:4px;justify-self:center}
 .cam .side .ak-ic{width:26px;height:26px}
@@ -626,7 +627,7 @@ const AppKit = (() => {
 })();
 </script>
 <script>
-const BUILD = '1795153432';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
+const BUILD = '1795153772';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
 AppKit.fixViewport({ gap: false });   // 홈 화면 앱에서 탭바가 아래로 잘려서 보정을 끈다(2026-11-20 확인)
 AppKit.autoUpdate(BUILD);
 AppKit.showErrors(BUILD);
@@ -1079,9 +1080,11 @@ const CAM = (() => {
   const can = () => !!navigator.mediaDevices?.getUserMedia;
   const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
-  function findCard(src, sw, sh) {
-    const W = 200, H = Math.max(1, Math.round(sh / sw * W)); work.width = W; work.height = H;
-    wx.drawImage(src, 0, 0, W, H);
+  /* roi: 찾을 범위(영상 비율 [왼,위,오른,아래]) — 명함 틀 둘레만 보면 바탕이 적어 훨씬 잘 찾는다 */
+  function findCard(src, sw, sh, roi = [0, 0, 1, 1]) {
+    const [rl, rt, rr, rb] = roi, rw = (rr - rl) * sw, rh = (rb - rt) * sh;
+    const W = 200, H = Math.max(1, Math.round(rh / rw * W)); work.width = W; work.height = H;
+    wx.drawImage(src, rl * sw, rt * sh, rw, rh, 0, 0, W, H);
     const d = wx.getImageData(0, 0, W, H).data, N = W * H, L = new Uint8Array(N), B = new Uint8Array(N), hist = new Uint32Array(256);
     for (let i = 0; i < N; i++) L[i] = (d[i * 4] * 77 + d[i * 4 + 1] * 150 + d[i * 4 + 2] * 29) >> 8;
     for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) { const i = y * W + x;
@@ -1091,8 +1094,18 @@ const CAM = (() => {
     let sB = 0, wB = 0, best = 0, th = 128;
     for (let i = 0; i < 256; i++) { wB += hist[i]; if (!wB) continue; const wF = N - wB; if (!wF) break; sB += i * hist[i];
       const v = wB * wF * (sB / wB - (sum - sB) / wF) ** 2; if (v > best) { best = v; th = i; } }
-    return blob(B, W, H, th, true) || blob(B, W, H, th, false);
+    const q = blob(B, W, H, th, true) || blob(B, W, H, th, false);
+    return q && q.map(([x, y]) => [rl + x * (rr - rl), rt + y * (rb - rt)]);
   }
+  /* 틀 안 모습: 글자가 있는지(밝기 흩어짐)와 지난번과 얼마나 달라졌는지 — 테두리를 못 찾아도 명함이 틀 안에 가만히 있으면 찍는다 */
+  let prevG = null;
+  function frameState(src, sw, sh, g) {
+    const W = 48, H = 28; work.width = W; work.height = H;
+    wx.drawImage(src, g[0] * sw, g[1] * sh, (g[2] - g[0]) * sw, (g[3] - g[1]) * sh, 0, 0, W, H);
+    const d = wx.getImageData(0, 0, W, H).data, cur = new Uint8Array(W * H); let m = 0, v = 0, diff = 0;
+    for (let i = 0; i < W * H; i++) { cur[i] = (d[i * 4] * 77 + d[i * 4 + 1] * 150 + d[i * 4 + 2] * 29) >> 8; m += cur[i]; }
+    m /= W * H; for (let i = 0; i < W * H; i++) { v += (cur[i] - m) ** 2; if (prevG) diff += Math.abs(cur[i] - prevG[i]); }
+    const r = { mean: m, spread: Math.sqrt(v / (W * H)), diff: prevG ? diff / (W * H) : 99 }; prevG = cur; return r;  }
   function blob(B, W, H, th, bright) {
     const N = W * H, on = i => bright ? B[i] > th : B[i] <= th, seen = new Uint8Array(N);
     for (const [sx, sy] of [[.5, .5], [.42, .5], [.58, .5], [.5, .42], [.5, .58], [.36, .46], [.64, .54]]) {
@@ -1108,11 +1121,11 @@ const CAM = (() => {
         if (y > 0 && !seen[i - W] && on(i - W)) { seen[i - W] = 1; st.push(i - W); }
         if (y < H - 1 && !seen[i + W] && on(i + W)) { seen[i + W] = 1; st.push(i + W); }
       }
-      if (n < N * .1 || n > N * .9 || edge > (W + H) * .12) continue;          // 너무 작거나 크거나, 화면 끝에 걸쳤으면 명함이 아니다
+      if (n < N * .12 || n > N * .95 || edge > (W + H) * .2) continue;          // 너무 작거나 크거나, 화면 끝에 걸쳤으면 명함이 아니다
       const q = [TL, TR, BR, BL], area = Math.abs(q.reduce((s, p, k) => { const r = q[(k + 1) % 4]; return s + p[0] * r[1] - r[0] * p[1]; }, 0)) / 2;
-      if (n / area < .86 || n / area > 1.12) continue;                           // 네모가 아니다
+      if (n / area < .82 || n / area > 1.15) continue;                           // 네모가 아니다
       const r = (dist(TL, TR) + dist(BL, BR)) / (dist(TL, BL) + dist(TR, BR)), rr = r > 1 ? r : 1 / r;
-      if (rr < 1.2 || rr > 2.2) continue;                                        // 명함 비율(약 1.75)에서 너무 멀다
+      if (rr < 1.2 || rr > 2.4) continue;                                        // 명함 비율(약 1.75)에서 너무 멀다
       return q.map(([x, y]) => [(x + .5) / W, (y + .5) / H]);
     }
     return null;
@@ -1175,7 +1188,7 @@ const CAM = (() => {
     } catch (e) {
       msg(`카메라를 켜지 못했어요.<br><button type="button" class="pill on" data-camfile>기본 카메라로 찍기</button>`); return;
     }
-    msg('명함을 화면 가운데에 놓아 주세요');
+    msg('명함을 네모 칸 안에 맞춰 주세요');
     clearInterval(timer); timer = setInterval(tick, 140);
   }
   function close() {
@@ -1190,29 +1203,47 @@ const CAM = (() => {
     const vw = video.videoWidth, vh = video.videoHeight, cw = video.clientWidth, ch = video.clientHeight, s = Math.max(cw / vw, ch / vh);
     return { s, ox: (cw - vw * s) / 2, oy: (ch - vh * s) / 2, vw, vh, cw, ch };
   }
-  function draw(q) {
-    const f = fit(), dpr = devicePixelRatio || 1, g = ov.getContext('2d');
-    if (ov.width !== f.cw * dpr) { ov.width = f.cw * dpr; ov.height = f.ch * dpr; }
-    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, f.cw, f.ch);
-    const P = q && q.map(([x, y]) => [f.ox + x * f.vw * f.s, f.oy + y * f.vh * f.s]);
-    const ok = getComputedStyle(el).getPropertyValue('--ok').trim() || '#3ecf8e';
-    if (!P) return;
-    g.beginPath(); P.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath();
-    g.fillStyle = 'rgba(62,207,142,.18)'; g.fill(); g.strokeStyle = ok; g.lineWidth = 3.5; g.lineJoin = 'round'; g.stroke();
-    P.forEach(([x, y]) => { g.beginPath(); g.arc(x, y, 7, 0, 7); g.fillStyle = '#fff'; g.fill(); g.lineWidth = 3; g.stroke(); });
+  /* 명함 틀: 화면 가운데 가로 명함 비율(1.75) 칸. 화면 좌표와 영상 비율 좌표를 함께 돌려준다 */
+  function guide() {
+    const f = fit(), gw = Math.min(f.cw * .88, 560), gh = gw / 1.75, gx = (f.cw - gw) / 2, gy = Math.max(110, (f.ch - gh) / 2 - 40);
+    const toV = (x, y) => [(x - f.ox) / f.s / f.vw, (y - f.oy) / f.s / f.vh];
+    const [l, t] = toV(gx, gy), [r, b] = toV(gx + gw, gy + gh);
+    return { gx, gy, gw, gh, v: [l, t, r, b], f };
   }
+  const grow = ([l, t, r, b], k) => { const w = (r - l) * k, h = (b - t) * k; return [Math.max(0, l - w), Math.max(0, t - h), Math.min(1, r + w), Math.min(1, b + h)]; };
+  function draw(hit) {
+    const G = guide(), f = G.f, dpr = devicePixelRatio || 1, g = ov.getContext('2d');
+    if (ov.width !== Math.round(f.cw * dpr)) { ov.width = Math.round(f.cw * dpr); ov.height = Math.round(f.ch * dpr); }
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, f.cw, f.ch);
+    const { gx, gy, gw, gh } = G, ok = getComputedStyle(el).getPropertyValue('--ok').trim() || '#3ecf8e';
+    g.fillStyle = 'rgba(0,0,0,.5)'; g.beginPath(); g.rect(0, 0, f.cw, f.ch); g.roundRect(gx, gy, gw, gh, 14); g.fill('evenodd');
+    g.strokeStyle = hit ? ok : '#fff'; g.lineWidth = 5; g.lineCap = 'round'; const k = 30;
+    [[gx, gy, 1, 1], [gx + gw, gy, -1, 1], [gx + gw, gy + gh, -1, -1], [gx, gy + gh, 1, -1]].forEach(([x, y, sx, sy]) => { g.beginPath(); g.moveTo(x, y + sy * k); g.lineTo(x, y); g.lineTo(x + sx * k, y); g.stroke(); });
+    el.style.setProperty('--msgy', (gy + gh + 22) + 'px');
+  }
+  /* 0.14초마다: ① 틀 둘레에서 명함 테두리를 찾고 ② 못 찾아도 틀 안에 글자가 있고 가만히 있으면 '틀에 맞춘 명함'으로 본다 */
   function tick() {
     if (busy || !video.videoWidth) return;
-    const q = findCard(video, video.videoWidth, video.videoHeight);
-    if (!q) { lost++; still = 0; if (lost > 3) { quad = null; armed = true; } draw(null); if (lost > 3) msg('명함을 화면 가운데에 놓아 주세요'); return; }
+    const vw = video.videoWidth, vh = video.videoHeight, G = guide();
+    let q = findCard(video, vw, vh, grow(G.v, .18));
+    if (q) {   // 찾은 네모가 틀과 겹쳐야 한다(가운데가 틀 안, 크기가 틀의 35% 이상)
+      const cx = q.reduce((s, p) => s + p[0], 0) / 4, cy = q.reduce((s, p) => s + p[1], 0) / 4, [l, t, r, b] = G.v;
+      const qa = Math.abs(q.reduce((s, p, k) => { const o = q[(k + 1) % 4]; return s + p[0] * vw * o[1] * vh - o[0] * vw * p[1] * vh; }, 0)) / 2, ga = (r - l) * vw * (b - t) * vh;
+      if (cx < l || cx > r || cy < t || cy > b || qa < ga * .35) q = null;
+    }
+    const fs = frameState(video, vw, vh, G.v), calm = fs.diff < 7, filled = fs.mean > 110 && fs.spread > 12;   // 밝은 바탕에 글자가 있는 칸
+    if (!armed && fs.diff > 14) { armed = true; still = 0; }   // 찍은 뒤 틀 안이 크게 바뀌면(명함을 바꾸면) 다시 찍을 준비
+    const hit = !!q || (filled && calm);
+    draw(hit);
+    if (!hit) { lost++; still = 0; if (lost > 3) { quad = null; armed = true; msg('명함을 네모 칸 안에 맞춰 주세요'); } return; }
     lost = 0;
-    const move = quad ? Math.max(...q.map((p, i) => dist(p, quad[i]))) : 1;
-    quad = q; draw(q);
+    const move = q && quad ? Math.max(...q.map((p, i) => dist(p, quad[i]))) : (calm ? 0 : 1);
+    quad = q;
     if (!armed) { msg('찍었어요. 다음 명함을 놓아 주세요', true); return; }
     still = move < .015 ? still + 1 : 0;
-    if (!auto) { msg('명함을 찾았어요. 셔터를 눌러 주세요', true); return; }
-    msg(still >= 2 ? '그대로 계세요…' : '명함을 찾았어요', true);
-    if (still >= 5) shoot(q);   // 약 0.7초 멈춰 있으면 찍는다
+    if (!auto) { msg('명함이 칸 안에 있어요. 셔터를 눌러 주세요', true); return; }
+    msg(still >= 2 ? '그대로 계세요…' : '좋아요', true);
+    if (still >= (q ? 5 : 8)) shoot(q);   // 테두리를 찾았으면 약 0.7초, 틀로만 맞췄으면 약 1.1초 멈춰 있으면 찍는다
   }
   async function shoot(q) {
     if (busy || !video?.videoWidth) return; busy = true;
@@ -1221,8 +1252,12 @@ const CAM = (() => {
     try {
       const vw = video.videoWidth, vh = video.videoHeight;
       let img, flat = false;
-      if (q) { img = flatten(video, vw, vh, q); flat = true; }
-      else { const c = document.createElement('canvas'), s = Math.min(1, 1600 / Math.max(vw, vh)); c.width = vw * s; c.height = vh * s; c.getContext('2d').drawImage(video, 0, 0, c.width, c.height); img = c.toDataURL('image/jpeg', .85); }
+      if (q) img = flatten(video, vw, vh, q);   // 테두리를 찾았으면 네 귀퉁이를 펴서
+      else {                                    // 못 찾았으면 틀(조금 넉넉하게)만큼 잘라서
+        const [l, t, r, b] = grow(guide().v, .04), sw = (r - l) * vw, sh = (b - t) * vh, s = Math.min(1, 1400 / Math.max(sw, sh)), c = document.createElement('canvas');
+        c.width = Math.round(sw * s); c.height = Math.round(sh * s); c.getContext('2d').drawImage(video, l * vw, t * vh, sw, sh, 0, 0, c.width, c.height); img = c.toDataURL('image/jpeg', .88);
+      }
+      flat = true;
       shots++; count(); armed = false; still = 0;
       const p = { id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), img, flat };
       el.querySelector('.strip').insertAdjacentHTML('afterbegin', `<div class="sh" data-p="${p.id}"><img src="${img}" alt=""><span>읽는 중…</span></div>`);
