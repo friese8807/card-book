@@ -68,6 +68,7 @@ function handle_(q) {
       case 'list': return { ok: true, data: { cards: list_() } };
       case 'scan': return { ok: true, data: scan_(q.img) };
       case 'save': return { ok: true, data: save_(q.card, q.photo) };
+      case 'bulk': return { ok: true, data: bulk_(q.cards) };
       case 'del': return { ok: true, data: del_(q.id) };
       case 'photos': return { ok: true, data: photos_(q.ids) };
       default: return { ok: false, message: '알 수 없는 요청이에요' };
@@ -85,6 +86,20 @@ function rows_() {
 }
 const toCard_ = r => { const c = {}; COLS.forEach((k, i) => c[k] = r[i]); c.fav = c.fav === 'TRUE' || c.fav === 'true' || c.fav === '1'; c.checked = c.checked !== 'FALSE' && c.checked !== 'false' && c.checked !== '0'; c.at = Number(c.at) || 0; c.photo = !!c.photoId; return c; };
 function list_() { return rows_().rows.filter(r => r[0]).map(toCard_); }
+/* 여러 장 한꺼번에 넣기(리멤버 가져오기 등). 사진 없이 글자만, 이미 있는 id 는 건너뛴다 */
+function bulk_(cards) {
+  if (!Array.isArray(cards) || !cards.length) return { added: 0 };
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    const { sh, rows } = rows_(), have = new Set(rows.map(r => r[0])), now = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm');
+    const out = cards.filter(c => c && c.id && String(c.name || '').trim() && !have.has(c.id)).map(c => {
+      c = Object.assign({}, c, { updated: now, photoId: '' }); if (!c.at) c.at = Date.now();
+      return COLS.map(k => k === 'fav' || k === 'checked' ? (c[k] ? 'TRUE' : 'FALSE') : c[k] == null || c[k] === '' ? '' : "'" + String(c[k]));
+    });
+    if (out.length) sh.getRange(sh.getLastRow() + 1, 1, out.length, COLS.length).setValues(out);
+    return { added: out.length };
+  } finally { lock.releaseLock(); }
+}
 function save_(card, photo) {
   if (!card || !card.id || !String(card.name || '').trim()) throw new Error('이름이 없는 명함은 저장할 수 없어요');
   const lock = LockService.getScriptLock(); lock.waitLock(20000);

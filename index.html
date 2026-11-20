@@ -245,6 +245,8 @@ button{touch-action:manipulation}
 .vbar button{flex:none;border:0;border-radius:9px;background:var(--accent);color:var(--on-acc);font:inherit;font-weight:800;font-size:13px;padding:7px 12px}
 .vbar button.x{background:none;color:var(--muted);padding:6px}.vbar button.x .ak-ic{width:16px;height:16px}
 .tg{display:flex;align-items:center;gap:10px;margin-top:10px;font-weight:700;font-size:15px}.tg input{width:22px;height:22px;accent-color:var(--accent)}
+.rm-sum{font-size:16px;margin:4px 0 10px}.rm-cats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}.rm-cats span{background:var(--chip);border-radius:8px;padding:5px 9px;font-size:13px}
+.rm-list{border:1px solid var(--line);border-radius:12px;padding:8px 12px;font-size:14px;line-height:1.9}.rm-list .m{color:var(--muted)}.rm-note{color:var(--muted);font-size:13.5px;line-height:1.5;word-break:keep-all;margin:12px 0}
 .chk span{flex:1}.chk button{flex:none;border:0;border-radius:9px;background:var(--new-ink);color:var(--new);font:inherit;font-weight:800;font-size:13px;padding:8px 12px}
 .acts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0 6px}
 .acts a,.acts button{display:grid;justify-items:center;gap:5px;padding:10px 0;border-radius:14px;background:var(--p-blue);color:var(--p-blue-ink);text-decoration:none;font:inherit;font-size:12px;font-weight:700;border:0}
@@ -591,7 +593,7 @@ const AppKit = (() => {
 })();
 </script>
 <script>
-const BUILD = '1795148110';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
+const BUILD = '1795148554';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
 AppKit.fixViewport({ gap: false });   // 홈 화면 앱에서 탭바가 아래로 잘려서 보정을 끈다(2026-11-20 확인)
 AppKit.autoUpdate(BUILD);
 AppKit.showErrors(BUILD);
@@ -703,7 +705,9 @@ async function refresh() {
     d.cards.forEach(c => c.synced = true);
     const sig = JSON.stringify(d.cards) + local.length; if (sig === S.sig) return; S.sig = sig;
     S.cards = [...d.cards, ...local]; keep();
-    for (const c of local) await store(c, c.photo ? await PH.get(c.id) : '');
+    const withPh = local.filter(c => c.photo), plainC = local.filter(c => !c.photo);
+    if (plainC.length) await uploadMany(plainC).catch(() => {});
+    for (const c of withPh) await store(c, await PH.get(c.id));
     if (!sheet.isOpen && !AppKit.editing()) tabs.redraw();
   } catch (e) { if (e.code === 'auth') AppKit.toast('연결 암호가 맞지 않아요. 설정에서 다시 넣어 주세요'); }
 }
@@ -816,6 +820,8 @@ const tabs = AppKit.tabs({
         <button type="submit" class="btn">${srv ? '다시 연결하기' : '연결하기'}</button></form>
         ${srv ? '<button type="button" class="btn del" data-srvoff>연결 끊기</button>' : ''}</div>
       ${S.demo ? `<div class="card"><h2>예시로 둘러보는 중</h2><p>예시 명함은 저장되지 않아요.</p><button type="button" class="btn" data-demo="off">예시 끄기</button></div>` : ''}
+      <div class="card"><h2>리멤버에서 가져오기</h2><p>리멤버 앱 → 설정 → 명함 내보내기로 메일에 온 엑셀 파일을 고르면 한 번에 넣어요. 이미 있는 명함은 건너뛰어요.</p>
+        <label class="btn sub" style="cursor:pointer;margin-top:10px">${IC.save}엑셀 파일 고르기<input type="file" id="rmfile" accept=".xls,.xlsx,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden></label></div>
       <div class="card"><h2>아이폰 연락처</h2><p>명함을 확인('맞아요')하거나 직접 넣으면 연락처 화면을 바로 띄워요. '새로운 연락처 생성'만 누르면 돼요.</p>
         <label class="tg"><input type="checkbox" data-autovcf ${S.autoVcf ? 'checked' : ''}><span>확인할 때 연락처에도 넣기</span></label></div>
       <div class="card"><h2>내보내기·백업</h2><p>${srv ? '명함은 구글 시트(명함첩)와 드라이브(명함첩 사진 폴더)에 저장돼요.' : '서버를 연결하기 전에는 명함이 이 휴대폰 안에만 있어요.'}</p>
@@ -997,11 +1003,116 @@ async function restore(file) {
   } catch (e) { AppKit.toast('백업 파일을 읽지 못했어요'); }
 }
 
+/* ── 리멤버에서 가져오기 ── 리멤버 앱 '명함 내보내기'로 메일에 온 엑셀(xls·xlsx·csv)
+   제목 줄의 낱말로 칸을 찾는다(리멤버가 칸 이름·순서를 바꿔도 되게). 사진은 엑셀에 없어서 글자만 */
+const MY_CO = /올포랜드|allforland/i;
+const MINISTRY = /(기획재정부|교육부|과학기술정보통신부|외교부|통일부|법무부|국방부|행정안전부|국가보훈부|문화체육관광부|농림축산식품부|산업통상자원부|보건복지부|환경부|기후에너지환경부|고용노동부|성평등가족부|여성가족부|국토교통부|해양수산부|중소벤처기업부|인사혁신처|법제처|식품의약품안전처|국무조정실|위원회)/;
+function classify(org, email) {   // 서버(Code.gs classify_)와 같은 규칙
+  org = String(org || ''); email = String(email || '').toLowerCase();
+  if (MY_CO.test(org) || /allforland/.test(email)) return '사내';
+  if (/(시청|도청|군청|구청|광역시|특별시|특별자치|^[가-힣]{2,4}(도|시|군|구)$)/.test(org)) return '지자체';
+  if (/(국립|조사원|정보원|지방해양수산청|해양경찰|[가-힣]청$|관리단|사무소$)/.test(org)) return '소속·산하기관';
+  if (MINISTRY.test(org)) return '중앙부처';
+  if (/(공단|공사|진흥원|연구원|협회|재단|진흥회|대학교|대학원)/.test(org) || /\.(or|re|ac)\.kr$/.test(email)) return '공공기관';
+  if (/(\(주\)|㈜|주식회사|Inc|Co\.|Corp|Ltd)/i.test(org) || /\.(co\.kr|com|ai|io|net)$/.test(email)) return '기업';
+  if (/korea\.kr$/.test(email)) return '소속·산하기관';
+  return '기타';
+}
+function phoneFmt(v) {
+  let d = String(v || '').replace(/[^\d+]/g, ''); if (!d) return '';
+  d = d.replace(/^\+?82/, '0').replace(/^00/, '0'); if (/^[1-9]\d{8,9}$/.test(d) && /^(10|2|[3-6]\d|70)/.test(d)) d = '0' + d;   // 엑셀이 앞자리 0을 지운 번호
+  if (/^050\d{8}$/.test(d)) return d.replace(/^(050\d)(\d{3})(\d{4})$/, '$1-$2-$3');
+  if (/^02\d{7,8}$/.test(d)) return d.replace(/^(02)(\d{3,4})(\d{4})$/, '$1-$2-$3');
+  if (/^0\d{9,10}$/.test(d)) return d.replace(/^(0\d{2})(\d{3,4})(\d{4})$/, '$1-$2-$3');
+  if (/^1\d{3}\d{4}$/.test(d)) return d.replace(/^(\d{4})(\d{4})$/, '$1-$2');
+  return String(v).trim();
+}
+/* 칸 이름 → 명함 항목. 앞에 있는 규칙이 먼저. 영문 이름·회사 주소처럼 겹치는 말은 먼저 거른다 */
+const RM_COLS = [
+  ['nameEn', /영문.*(이름|성명)|english/i], ['name', /^(이름|성명|name)$|^이름|성명/i],
+  ['mobile', /휴대|핸드폰|모바일|mobile|cell/i], ['fax', /팩스|fax/i], ['tel', /전화|유선|tel|phone/i],
+  ['email', /메일|e-?mail/i], ['addr', /주소|address/i], ['web', /홈페이지|웹사이트|웹|url|web|site/i],
+  ['dept', /부서|department/i], ['title', /직책|직위|직급|직함|title|position/i], ['org', /회사|기관|소속|company|organization/i],
+  ['memo', /메모|노트|note|memo/i], ['group', /그룹|group|태그|tag/i], ['date', /등록|날짜|일자|date/i],
+];
+let XLSXp;
+const loadXLSX = () => XLSXp ||= new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload = () => res(window.XLSX); sc.onerror = () => { XLSXp = null; rej(new Error('엑셀 읽기 도구를 받지 못했어요. 인터넷 연결을 확인해 주세요')); }; document.head.appendChild(sc); });
+const dkey = c => (c.name || '').replace(/\s/g, '') + '|' + ((c.mobile || '').replace(/\D/g, '') || (c.email || '').toLowerCase() || (c.org || '').replace(/\s/g, ''));
+async function readRemember(file) {
+  const X = await loadXLSX();
+  const wb = X.read(await file.arrayBuffer(), { type: 'array', cellDates: true, codepage: 949 });
+  for (const sn of wb.SheetNames) {
+    const rows = X.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: true, defval: '' });
+    const hi = rows.slice(0, 15).findIndex(r => r.some(v => /^(이름|성명|name)$/i.test(String(v).trim())));
+    if (hi < 0) continue;
+    // 칸마다 처음 맞는 규칙 하나만. 같은 항목이 두 칸(휴대폰1·휴대폰2 등)이거나 모르는 칸은 메모로
+    const map = {}, extra = [];
+    rows[hi].forEach((h, i) => { h = String(h).replace(/\s/g, ''); if (!h || /^(no\.?|번호|순번|사진|이미지)/i.test(h)) return; const m = RM_COLS.find(([, re]) => re.test(h)); if (m && !(m[0] in map)) map[m[0]] = i; else extra.push([h, i]); });
+    const have = new Set(S.cards.map(dkey)), out = [], seen = new Set(); let dup = 0;
+    const learned = S.cards.filter(c => c.checked && c.org);
+    rows.slice(hi + 1).forEach((r, n) => {
+      const g = k => map[k] == null ? '' : r[map[k]];
+      const name = String(g('name')).trim(); if (!name) return;
+      let when = g('date'); when = when instanceof Date ? when : when ? new Date(String(when).replace(/\./g, '-').replace(/-\s*/g, '-').replace(/-$/, '')) : null;
+      const at = when && !isNaN(when) ? when.getTime() : Date.now() - n * 1000;
+      const c = { id: 'r' + Date.now().toString(36) + n.toString(36) + Math.random().toString(36).slice(2, 4), at, met: AppKit.kstDate(new Date(at)),
+        name, nameEn: String(g('nameEn')).trim(), org: String(g('org')).trim(), dept: String(g('dept')).trim(), title: String(g('title')).trim(),
+        mobile: phoneFmt(g('mobile')), tel: phoneFmt(g('tel')), fax: phoneFmt(g('fax')), email: String(g('email')).trim(), addr: String(g('addr')).trim(), web: String(g('web')).trim(),
+        place: '', fav: false, checked: true,
+        memo: [String(g('memo')).trim(), g('group') && '그룹: ' + String(g('group')).trim(), ...extra.map(([h, i]) => r[i] !== '' && r[i] != null ? `${h}: ${r[i] instanceof Date ? AppKit.kstDate(r[i]) : String(r[i]).trim()}` : '')].filter(Boolean).join('\n') };
+      // 분류: 이미 확인한 명함 중 같은 회사 메일·같은 기관이 있으면 그 분류를, 없으면 규칙으로
+      const dom = /@/.test(c.email) && !/@(korea\.kr|gmail\.com|naver\.com|daum\.net|hanmail\.net|nate\.com|kakao\.com|outlook\.com|hotmail\.com)$/i.test(c.email) ? c.email.split('@')[1].toLowerCase() : '';
+      const k2 = s => String(s || '').replace(/\s|\(주\)|㈜|주식회사/g, '');
+      const same = (dom && learned.find(x => (x.email || '').toLowerCase().endsWith('@' + dom))) || (c.org && learned.find(x => k2(x.org) === k2(c.org)));
+      c.cat = same ? same.cat : classify(c.org, c.email);
+      const k = dkey(c); if (have.has(k) || seen.has(k)) { dup++; return; } seen.add(k); out.push(c);
+    });
+    return { cards: out, dup, cols: Object.keys(map) };
+  }
+  throw new Error("'이름' 칸이 있는 표를 찾지 못했어요. 리멤버에서 받은 엑셀 파일이 맞는지 확인해 주세요");
+}
+let RM = null;   // 읽어 둔 가져오기 목록
+async function rememberPick(file) {
+  try {
+    AppKit.toast('엑셀을 읽는 중이에요…');
+    RM = await readRemember(file);
+    const n = {}; RM.cards.forEach(c => n[c.cat] = (n[c.cat] || 0) + 1);
+    SB().innerHTML = `<div class="sheet-h"><h2>리멤버에서 가져오기</h2></div>
+      <p class="rm-sum"><b>${RM.cards.length}장</b>을 찾았어요.${RM.dup ? ` 이미 있는 ${RM.dup}장은 빼요.` : ''}</p>
+      ${RM.cards.length ? `<div class="rm-cats">${CATS.filter(k => n[k]).map(k => `<span>${k} <b>${n[k]}</b></span>`).join('')}</div>
+      <div class="rm-list">${RM.cards.slice(0, 5).map(c => `<div><b>${esc(c.name)}</b> ${esc([c.title, c.org].filter(Boolean).join(' · '))}</div>`).join('')}${RM.cards.length > 5 ? `<div class="m">외 ${RM.cards.length - 5}장</div>` : ''}</div>
+      <p class="rm-note">사진은 엑셀에 없어서 글자만 들어와요. 분류는 기관 이름을 보고 자동으로 나눴어요. 틀린 건 나중에 고치면 비슷한 명함도 따라 배워요.</p>
+      <button type="button" class="btn" data-rmgo>${RM.cards.length}장 가져오기</button>` : '<p class="rm-note">새로 넣을 명함이 없어요.</p>'}`;
+    sheet.open();
+  } catch (e) { AppKit.toast(e.message || '엑셀을 읽지 못했어요'); }
+}
+/* 여러 장 서버에 올리기: 200장씩 한 번에. 서버 코드가 예전 것이면 한 장씩 */
+async function uploadMany(cards, onStep = () => {}) {
+  if (!S.srv || !cards.length) return;
+  for (let i = 0; i < cards.length; i += 200) {
+    const part = cards.slice(i, i + 200);
+    try { await api('bulk', { cards: part.map(strip) }); }
+    catch (e) { if (e.code === 'auth') throw e; if (!/알 수 없는 요청/.test(e.message)) throw e; for (const c of part) { await api('save', { card: strip(c) }); onStep(1); } continue; }
+    part.forEach(c => c.synced = true); keep(); onStep(part.length);
+  }
+}
+async function rememberGo(btn) {
+  if (!RM?.cards.length || btn.disabled) return; btn.disabled = true;
+  const cards = RM.cards; RM = null;
+  S.cards.push(...cards); VC.add(cards.map(c => c.id)); keep();   // 리멤버 명함은 대개 이미 연락처에 있어서 '연락처에 넣기' 줄에 띄우지 않는다
+  let done = 0; const show = () => btn.textContent = S.srv ? `구글 시트에 올리는 중… ${done}/${cards.length}` : '넣는 중…';
+  show();
+  try { await uploadMany(cards, k => { done += k; show(); }); sheet.close(); AppKit.toast(`${cards.length}장을 가져왔어요`); S.sig = ''; }
+  catch (e) { sheet.close(); AppKit.toast(`이 휴대폰에는 넣었어요. 시트에는 다음에 연결될 때 올릴게요 (${plain(e)})`); }
+  S.cat = '전체'; S.org = ''; S.sort = 'date'; tabs.go('list'); tabs.redraw();
+}
+
 /* ── 입력 ── */
 document.addEventListener('change', async e => {
   if (e.target.name === 'org' && e.target.form?.id === 'fm') { const o = list().find(x => x.org === e.target.value); if (o) e.target.form.cat.value = o.cat; }
   if (e.target.id === 'shot' && e.target.files[0]) { draft = { photo: await AppKit.toJpeg(e.target.files[0], 1100, .8) }; const l = e.target.closest('.shot'); l.querySelector('svg,img')?.remove(); l.insertAdjacentHTML('afterbegin', `<img src="${draft.photo}" alt="">`); }
   if (e.target.id === 'restore' && e.target.files[0]) restore(e.target.files[0]);
+  if (e.target.id === 'rmfile' && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ''; rememberPick(f); }
   if (e.target.matches('[data-autovcf]')) { S.autoVcf = e.target.checked; LS.set('autoVcf', S.autoVcf); AppKit.toast(S.autoVcf ? '확인할 때 연락처에도 넣을게요' : '연락처에는 직접 넣을 때만 넣을게요'); }
 });
 document.addEventListener('submit', async e => {
@@ -1047,6 +1158,7 @@ document.addEventListener('click', async e => {
   if (q('[data-srvoff]')) { if (!AppKit.sure(q('[data-srvoff]'), '연결을 끊을까요?')) return; S.srv = null; LS.del('srv'); AppKit.toast('연결을 끊었어요. 휴대폰 안 명함은 그대로 있어요'); tabs.redraw(); return; }
   if (q('[data-vcfnew]')) { addContacts(toContacts()); tabs.redraw(); return; }
   if (q('[data-vcfskip]')) { VC.add(toContacts().map(c => c.id)); AppKit.toast('연락처에 넣지 않을게요. 명함을 열어 하나씩 넣을 수 있어요'); tabs.redraw(); return; }
+  if (q('[data-rmgo]')) return rememberGo(q('[data-rmgo]'));
   if (q('[data-backup]')) return backup();
   if (q('[data-vcfall]')) { if (!list().length) return AppKit.toast('내보낼 명함이 없어요'); download('명함첩-연락처.vcf', list().map(vcard).join('\r\n'), 'text/vcard'); return; }
   const c = list().find(x => x.id === S.cur);
