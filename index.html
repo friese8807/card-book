@@ -208,7 +208,7 @@ button{touch-action:manipulation}
 
 /* 기관 탭 */
 .org{display:flex;align-items:center;gap:12px;width:100%;border:0;border-bottom:1px solid var(--line);background:none;color:inherit;font:inherit;text-align:left;padding:12px max(16px,var(--sar)) 12px max(16px,var(--sal))}
-.org .ic.lg{font-weight:800;font-size:18px;overflow:hidden}.org .ic.lg.has{background:#fff;border:1px solid var(--line)}.org .ic.lg img{width:100%;height:100%;object-fit:contain;padding:6px;box-sizing:border-box}
+.org .ic.lg{font-weight:800;font-size:18px;overflow:hidden;position:relative}.org .ic.lg.gov img{position:absolute;inset:0;background:#fff}.org .ic.lg.has{background:#fff;border:1px solid var(--line)}.org .ic.lg img{width:100%;height:100%;object-fit:contain;padding:6px;box-sizing:border-box}
 .org .ic,.ak-empty .ic{flex:none;width:42px;height:42px;border-radius:12px;display:grid;place-items:center}
 .org .tx{flex:1;min-width:0}.org .nm{font-weight:800;font-size:16px;word-break:keep-all}
 .org .sub{font-size:13px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -628,7 +628,7 @@ const AppKit = (() => {
 })();
 </script>
 <script>
-const BUILD = '1795155878';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
+const BUILD = '1795156405';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
 AppKit.fixViewport({ gap: false });   // 홈 화면 앱에서 탭바가 아래로 잘려서 보정을 끈다(2026-11-20 확인)
 AppKit.autoUpdate(BUILD);
 AppKit.showErrors(BUILD);
@@ -852,7 +852,15 @@ const LOGO = (() => {
     const k = org.replace(/\s/g, ''); return (GOV.find(([name]) => k.includes(name)) || [])[1] || '';
   }
   const initial = o => (o.replace(/\(.*?\)|㈜|주식회사|\s/g, '') || o || '?').slice(0, 1).toUpperCase();
-  const tile = (o, cards) => { const d = domain(o, cards || []); return `<div class="ic lg c${hue(o)}"${d ? ` data-logo="${esc(d)}"` : ''}><b>${esc(initial(o))}</b></div>`; };
+  /* 정부 기관(중앙부처·소속기관 중 .go.kr·공용 메일·홈페이지 모름)은 통일된 정부상징(태극)으로. 위키미디어 공용의 공식 파일을 쓴다 */
+  const GOVMARK = 'https://upload.wikimedia.org/wikipedia/commons/3/3f/Emblem_of_the_Government_of_the_Republic_of_Korea.svg';
+  const isGov = (o, cards, d) => { const cat = cards[0]?.cat; if (cat !== '중앙부처' && cat !== '소속·산하기관') return false;
+    return !d || /\.go\.kr$/.test(d) || cards.some(c => /@korea\.kr$/i.test(c.email || '')) || /(과|관|실|국)$/.test(o.replace(/\s/g, '')); };   // 부서 이름이 기관 칸에 들어간 명함(○○정책관·○○과)도 정부로
+  const tile = (o, cards) => {
+    cards = cards || []; const d = domain(o, cards);
+    if (isGov(o, cards, d)) return `<div class="ic lg has gov c${hue(o)}"><b>${esc(initial(o))}</b><img src="${GOVMARK}" alt="정부상징" referrerpolicy="no-referrer" onerror="this.parentNode.classList.remove('has');this.remove()"></div>`;
+    return `<div class="ic lg c${hue(o)}"${d ? ` data-logo="${esc(d)}"` : ''}><b>${esc(initial(o))}</b></div>`;
+  };
   const M = LS.get('logos', {});   // 홈페이지 → 그림 주소('' 은 없음)
   const SRC = d => [`https://www.google.com/s2/favicons?domain=${encodeURIComponent(d)}&sz=128`, `https://icons.duckduckgo.com/ip3/${encodeURIComponent(d)}.ico`];
   const show = (el, url) => { el.classList.add('has'); el.innerHTML = `<img src="${esc(url)}" alt="" referrerpolicy="no-referrer">`; };
