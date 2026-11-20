@@ -628,7 +628,7 @@ const AppKit = (() => {
 })();
 </script>
 <script>
-const BUILD = '1795156405';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
+const BUILD = '1795156564';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
 AppKit.fixViewport({ gap: false });   // 홈 화면 앱에서 탭바가 아래로 잘려서 보정을 끈다(2026-11-20 확인)
 AppKit.autoUpdate(BUILD);
 AppKit.showErrors(BUILD);
@@ -758,6 +758,9 @@ async function fetchPhotos(ids) {
 /* ── 검색: 이름·기관·부서·직위·전화·메모, 초성(ㄱㄷㅎ)도 ── */
 const CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
 const cho = s => [...(s || '')].map(c => { const k = c.charCodeAt(0) - 0xAC00; return k >= 0 && k < 11172 ? CHO[Math.floor(k / 588)] : c; }).join('');
+/* (주)·㈜·주식회사 같은 법인 표시를 떼고 같은 기관으로 묶는다 */
+const orgName = o => String(o || '').replace(/[(（]\s*(주|유|사|재)\s*[)）]|㈜|주식회사|유한회사|사단법인|재단법인/g, ' ').replace(/\s+/g, ' ').trim();
+const orgKey = o => orgName(o).replace(/\s/g, '').toLowerCase();
 function match(c, q) {
   if (!q) return true;
   const hay = [c.name, c.nameEn, c.org, c.dept, c.title, c.memo, c.place, c.email].join(' ').toLowerCase();
@@ -769,11 +772,11 @@ function match(c, q) {
 function filtered() {
   let a = list().filter(c => match(c, S.q));
   if (S.cat === '★') a = a.filter(c => c.fav); else if (S.cat === '확인') a = a.filter(c => !c.checked); else if (S.cat !== '전체') a = a.filter(c => c.cat === S.cat);
-  if (S.org) a = a.filter(c => c.org === S.org);
+  if (S.org) { const k = orgKey(S.org); a = a.filter(c => orgKey(c.org) === k); }
   const byName = (x, y) => x.name.localeCompare(y.name, 'ko');
-  return a.sort(S.sort === 'date' ? (x, y) => y.at - x.at : S.sort === 'org' ? (x, y) => (x.org || '').localeCompare(y.org || '', 'ko') || byName(x, y) : byName);
+  return a.sort(S.sort === 'date' ? (x, y) => y.at - x.at : S.sort === 'org' ? (x, y) => orgName(x.org).localeCompare(orgName(y.org), 'ko') || byName(x, y) : byName);
 }
-const groupKey = c => S.sort === 'date' ? AppKit.kstDate(new Date(c.at)).replace(/-/g, '.') : S.sort === 'org' ? (c.org || '기관 없음') : (/[가-힣]/.test(c.name[0]) ? cho(c.name[0]).replace(/[ㄲㄸㅃㅆㅉ]/, x => 'ㄱㄷㅂㅅㅈ'['ㄲㄸㅃㅆㅉ'.indexOf(x)]) : c.name[0].toUpperCase());
+const groupKey = c => S.sort === 'date' ? AppKit.kstDate(new Date(c.at)).replace(/-/g, '.') : S.sort === 'org' ? (orgName(c.org) || '기관 없음') : (/[가-힣]/.test(c.name[0]) ? cho(c.name[0]).replace(/[ㄲㄸㅃㅆㅉ]/, x => 'ㄱㄷㅂㅅㅈ'['ㄲㄸㅃㅆㅉ'.indexOf(x)]) : c.name[0].toUpperCase());
 const hue = s => { let h = 0; for (const ch of s || '') h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h % 6; };
 const BAR = ['#4f93c9', '#3fa36b', '#d08a3a', '#8a6cc4', '#cf5d70', '#3a9ba3'];
 const brk = t => esc(t).replace(/(\S)\(/g, '$1​(');
@@ -903,8 +906,10 @@ const tabs = AppKit.tabs({
       drawList();
     }
     if (id === 'org') {
-      const g = {}; list().forEach(c => { const k = c.org || '기관 없음'; (g[k] ||= { n: 0, cat: c.cat || '기타', people: [], cards: [] }).n++; g[k].people.push(c.name); g[k].cards.push(c); });
-      const cats = CATS.map(cat => [cat, Object.entries(g).filter(([, v]) => v.cat === cat).sort((a, b) => b[1].n - a[1].n || a[0].localeCompare(b[0], 'ko'))]).filter(x => x[1].length);
+      const g = {}; list().forEach(c => { const k = orgKey(c.org) || '-'; const v = (g[k] ||= { name: orgName(c.org) || '기관 없음', n: 0, cats: {}, people: [], cards: [] });
+        v.n++; v.people.push(c.name); v.cards.push(c); const ct = c.cat || '기타'; v.cats[ct] = (v.cats[ct] || 0) + 1; });
+      Object.values(g).forEach(v => { v.cat = Object.entries(v.cats).sort((a, b) => (a[0] === '기타') - (b[0] === '기타') || b[1] - a[1])[0][0]; v.cards.sort((a, b) => (b.cat === v.cat) - (a.cat === v.cat)); });   // 표기마다 분류가 달라도 '기타'가 아닌 쪽, 많은 쪽으로
+      const cats = CATS.map(cat => [cat, Object.values(g).filter(v => v.cat === cat).map(v => [v.name, v]).sort((a, b) => b[1].n - a[1].n || a[0].localeCompare(b[0], 'ko'))]).filter(x => x[1].length);
       sc.innerHTML = !cats.length ? emptyHome() : cats.map(([cat, orgs]) => `<div class="gh">${cat}<span>${orgs.length}곳</span></div>` +
         orgs.map(([o, v]) => `<button type="button" class="org" data-goorg="${esc(o)}">${LOGO.tile(o, v.cards)}<div class="tx"><div class="nm">${brk(o)}</div><div class="sub">${esc(v.people.slice(0, 4).join(', '))}${v.people.length > 4 ? ' 외' : ''}</div></div><span class="n">${v.n}</span></button>`).join('')).join('') + '<div style="height:90px"></div>';
       LOGO.load(sc);
@@ -1036,7 +1041,7 @@ let draft = null;   // { photo } 새로 붙인 사진
 async function openForm(id, pre = {}) {
   const c = id ? list().find(x => x.id === id) : { cat: '기타', ...pre };
   S.cur = id || null; draft = pre.photo ? { photo: pre.photo } : null;
-  const orgs = [...new Set(list().map(x => x.org).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
+  const orgs = [...new Map(list().filter(x => x.org).map(x => [orgKey(x.org), orgName(x.org)])).values()].sort((a, b) => a.localeCompare(b, 'ko'));
   const f = (k, label, type = 'text', extra = '') => `<label>${label}<input name="${k}" type="${type}" value="${esc(c[k] || '')}" ${extra}></label>`;
   const p = draft?.photo || (id && c.photo ? await PH.get(id) : '');
   SB().innerHTML = `<div class="sheet-h"><h2>${id ? '명함 고치기' : '명함 직접 넣기'}</h2></div>
@@ -1476,7 +1481,7 @@ async function rememberGo(btn) {
 
 /* ── 입력 ── */
 document.addEventListener('change', async e => {
-  if (e.target.name === 'org' && e.target.form?.id === 'fm') { const o = list().find(x => x.org === e.target.value); if (o) e.target.form.cat.value = o.cat; }
+  if (e.target.name === 'org' && e.target.form?.id === 'fm') { const o = list().find(x => x.org && orgKey(x.org) === orgKey(e.target.value)); if (o) e.target.form.cat.value = o.cat; }
   if (e.target.id === 'shot' && e.target.files[0]) { draft = { photo: await AppKit.toJpeg(e.target.files[0], 1100, .8) }; const l = e.target.closest('.shot'); l.querySelector('svg,img')?.remove(); l.insertAdjacentHTML('afterbegin', `<img src="${draft.photo}" alt="">`); }
   if (e.target.id === 'restore' && e.target.files[0]) restore(e.target.files[0]);
   if (e.target.id === 'rmfile' && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ''; rememberPick(f); }
