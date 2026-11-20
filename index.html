@@ -593,7 +593,7 @@ const AppKit = (() => {
 })();
 </script>
 <script>
-const BUILD = '1795148554';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
+const BUILD = '1795148663';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
 AppKit.fixViewport({ gap: false });   // 홈 화면 앱에서 탭바가 아래로 잘려서 보정을 끈다(2026-11-20 확인)
 AppKit.autoUpdate(BUILD);
 AppKit.showErrors(BUILD);
@@ -1010,17 +1010,19 @@ const MINISTRY = /(기획재정부|교육부|과학기술정보통신부|외교�
 function classify(org, email) {   // 서버(Code.gs classify_)와 같은 규칙
   org = String(org || ''); email = String(email || '').toLowerCase();
   if (MY_CO.test(org) || /allforland/.test(email)) return '사내';
+  if (/(대학교|대학원|대학$|협회|재단|조합|연합회|학회|^\(사\)|^사단법인)/.test(org)) return '공공기관';   // 국립○○대학교·부산광역시○○협회가 먼저 걸리지 않게
+  if (/^한국.*(원|공단|공사)$/.test(org.replace(/\s/g, ''))) return '공공기관';
   if (/(시청|도청|군청|구청|광역시|특별시|특별자치|^[가-힣]{2,4}(도|시|군|구)$)/.test(org)) return '지자체';
-  if (/(국립|조사원|정보원|지방해양수산청|해양경찰|[가-힣]청$|관리단|사무소$)/.test(org)) return '소속·산하기관';
+  if (/(국립|조사원|국토지리정보원|지방해양수산청|해양경찰|[가-힣]청$|[가-힣]서$|관리단|사무소$)/.test(org)) return '소속·산하기관';
   if (MINISTRY.test(org)) return '중앙부처';
-  if (/(공단|공사|진흥원|연구원|협회|재단|진흥회|대학교|대학원)/.test(org) || /\.(or|re|ac)\.kr$/.test(email)) return '공공기관';
-  if (/(\(주\)|㈜|주식회사|Inc|Co\.|Corp|Ltd)/i.test(org) || /\.(co\.kr|com|ai|io|net)$/.test(email)) return '기업';
+  if (/(공단|공사|진흥원|연구원|연구소|테크노파크|센터$)/.test(org) || /\.(or|re|ac)\.kr$/.test(email)) return '공공기관';
+  if (/(\(주\)|㈜|주식회사|Inc|Co\.|Corp|Ltd|정보기술|기술$|소프트|시스템|테크|솔루션|랩$|컨설팅|엔지니어링|산업|인더스트리|건설|전자|통신|호텔|리조트|콘텐츠|부문$)/i.test(org) || /\.(co\.kr|com|ai|io|net)$/.test(email)) return '기업';
   if (/korea\.kr$/.test(email)) return '소속·산하기관';
   return '기타';
 }
 function phoneFmt(v) {
   let d = String(v || '').replace(/[^\d+]/g, ''); if (!d) return '';
-  d = d.replace(/^\+?82/, '0').replace(/^00/, '0'); if (/^[1-9]\d{8,9}$/.test(d) && /^(10|2|[3-6]\d|70)/.test(d)) d = '0' + d;   // 엑셀이 앞자리 0을 지운 번호
+  d = d.replace(/^\+?82/, '0').replace(/^00/, '0'); if (/^10\d{8}$/.test(d)) d = '0' + d;   // 엑셀이 앞자리 0을 지운 휴대폰 번호(그 밖의 낯선 번호는 그대로 둔다)
   if (/^050\d{8}$/.test(d)) return d.replace(/^(050\d)(\d{3})(\d{4})$/, '$1-$2-$3');
   if (/^02\d{7,8}$/.test(d)) return d.replace(/^(02)(\d{3,4})(\d{4})$/, '$1-$2-$3');
   if (/^0\d{9,10}$/.test(d)) return d.replace(/^(0\d{2})(\d{3,4})(\d{4})$/, '$1-$2-$3');
@@ -1047,13 +1049,13 @@ async function readRemember(file) {
     if (hi < 0) continue;
     // 칸마다 처음 맞는 규칙 하나만. 같은 항목이 두 칸(휴대폰1·휴대폰2 등)이거나 모르는 칸은 메모로
     const map = {}, extra = [];
-    rows[hi].forEach((h, i) => { h = String(h).replace(/\s/g, ''); if (!h || /^(no\.?|번호|순번|사진|이미지)/i.test(h)) return; const m = RM_COLS.find(([, re]) => re.test(h)); if (m && !(m[0] in map)) map[m[0]] = i; else extra.push([h, i]); });
+    rows[hi].forEach((h, i) => { h = String(h).replace(/\s/g, ''); if (!h || /^(no\.?|번호|순번|사진|이미지)|명함첩/i.test(h)) return; const m = RM_COLS.find(([, re]) => re.test(h)); if (m && !(m[0] in map)) map[m[0]] = i; else extra.push([h, i]); });
     const have = new Set(S.cards.map(dkey)), out = [], seen = new Set(); let dup = 0;
     const learned = S.cards.filter(c => c.checked && c.org);
     rows.slice(hi + 1).forEach((r, n) => {
       const g = k => map[k] == null ? '' : r[map[k]];
       const name = String(g('name')).trim(); if (!name) return;
-      let when = g('date'); when = when instanceof Date ? when : when ? new Date(String(when).replace(/\./g, '-').replace(/-\s*/g, '-').replace(/-$/, '')) : null;
+      let when = g('date'); if (!(when instanceof Date)) { const m = String(when).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/); when = m ? new Date(+m[1], m[2] - 1, +m[3], 12) : null; }   // '2024년 03월 05일'·'2024.3.5'·'2024-03-05'
       const at = when && !isNaN(when) ? when.getTime() : Date.now() - n * 1000;
       const c = { id: 'r' + Date.now().toString(36) + n.toString(36) + Math.random().toString(36).slice(2, 4), at, met: AppKit.kstDate(new Date(at)),
         name, nameEn: String(g('nameEn')).trim(), org: String(g('org')).trim(), dept: String(g('dept')).trim(), title: String(g('title')).trim(),
@@ -1064,7 +1066,9 @@ async function readRemember(file) {
       const dom = /@/.test(c.email) && !/@(korea\.kr|gmail\.com|naver\.com|daum\.net|hanmail\.net|nate\.com|kakao\.com|outlook\.com|hotmail\.com)$/i.test(c.email) ? c.email.split('@')[1].toLowerCase() : '';
       const k2 = s => String(s || '').replace(/\s|\(주\)|㈜|주식회사/g, '');
       const same = (dom && learned.find(x => (x.email || '').toLowerCase().endsWith('@' + dom))) || (c.org && learned.find(x => k2(x.org) === k2(c.org)));
+      const grp = String(g('group')).trim();
       c.cat = same ? same.cat : classify(c.org, c.email);
+      if (!same && c.cat === '기타' && grp) c.cat = /협력|업체|거래처|고객사/.test(grp) ? '기업' : classify(grp, '');   // 리멤버 그룹(협력업체·국토교통부 등)으로 한 번 더
       const k = dkey(c); if (have.has(k) || seen.has(k)) { dup++; return; } seen.add(k); out.push(c);
     });
     return { cards: out, dup, cols: Object.keys(map) };

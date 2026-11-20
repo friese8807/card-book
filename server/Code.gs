@@ -264,11 +264,13 @@ const MINISTRY = /(기획재정부|교육부|과학기술정보통신부|외교�
 function classify_(org, email, dept) {
   org = String(org || ''); email = String(email || '').toLowerCase();
   if (MY_COMPANY.test(org) || /allforland/.test(email)) return '사내';
+  if (/(대학교|대학원|대학$|협회|재단|조합|연합회|학회|^\(사\)|^사단법인)/.test(org)) return '공공기관';   // 국립○○대학교·부산광역시○○협회가 먼저 걸리지 않게
+  if (/^한국.*(원|공단|공사)$/.test(org.replace(/\s/g, ''))) return '공공기관';
   if (/(시청|도청|군청|구청|광역시|특별시|특별자치|^[가-힣]{2,4}(도|시|군|구)$)/.test(org)) return '지자체';
-  if (/(국립|조사원|정보원|지방해양수산청|해양경찰|[가-힣]청$|관리단|사무소$)/.test(org)) return '소속·산하기관';
+  if (/(국립|조사원|국토지리정보원|지방해양수산청|해양경찰|[가-힣]청$|[가-힣]서$|관리단|사무소$)/.test(org)) return '소속·산하기관';
   if (MINISTRY.test(org)) return '중앙부처';
-  if (/(공단|공사|진흥원|연구원|협회|재단|진흥회|대학교|대학원|\.or\.kr|\.re\.kr)/.test(org) || /\.(or|re|ac)\.kr$/.test(email)) return '공공기관';
-  if (/(\(주\)|㈜|주식회사|Inc|Co\.|Corp|Ltd)/i.test(org) || /\.(co\.kr|com|ai|io|net)$/.test(email)) return '기업';
+  if (/(공단|공사|진흥원|연구원|연구소|테크노파크|센터$)/.test(org) || /\.(or|re|ac)\.kr$/.test(email)) return '공공기관';
+  if (/(\(주\)|㈜|주식회사|Inc|Co\.|Corp|Ltd|정보기술|기술$|소프트|시스템|테크|솔루션|랩$|컨설팅|엔지니어링|산업|인더스트리|건설|전자|통신|호텔|리조트|콘텐츠|부문$)/i.test(org) || /\.(co\.kr|com|ai|io|net)$/.test(email)) return '기업';
   if (/korea\.kr$/.test(email)) return '소속·산하기관';
   return '기타';
 }
