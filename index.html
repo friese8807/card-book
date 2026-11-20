@@ -240,6 +240,11 @@ button{touch-action:manipulation}
 .dh .nm{font-size:23px;font-weight:800}.dh .nm small{font-size:14px;color:var(--muted);font-weight:600;margin-left:6px}
 .dh .og{font-size:14.5px;color:var(--p-blue-ink);margin-top:4px;line-height:1.45;word-break:keep-all}
 .chk{display:flex;align-items:center;gap:10px;background:var(--new);color:var(--new-ink);border-radius:12px;padding:10px 12px;margin:12px 0 0;font-size:13.5px;line-height:1.45;word-break:keep-all}
+.vbar{display:flex;align-items:center;gap:8px;margin:8px max(16px,var(--sar)) 0 max(16px,var(--sal));padding:8px 8px 8px 12px;border-radius:12px;background:var(--chip);color:var(--ink);font-size:13.5px;line-height:1.4;word-break:keep-all}
+.vbar>.ak-ic{width:18px;height:18px;flex:none;color:var(--accent)}.vbar span{flex:1}
+.vbar button{flex:none;border:0;border-radius:9px;background:var(--accent);color:var(--on-acc);font:inherit;font-weight:800;font-size:13px;padding:7px 12px}
+.vbar button.x{background:none;color:var(--muted);padding:6px}.vbar button.x .ak-ic{width:16px;height:16px}
+.tg{display:flex;align-items:center;gap:10px;margin-top:10px;font-weight:700;font-size:15px}.tg input{width:22px;height:22px;accent-color:var(--accent)}
 .chk span{flex:1}.chk button{flex:none;border:0;border-radius:9px;background:var(--new-ink);color:var(--new);font:inherit;font-weight:800;font-size:13px;padding:8px 12px}
 .acts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:14px 0 6px}
 .acts a,.acts button{display:grid;justify-items:center;gap:5px;padding:10px 0;border-radius:14px;background:var(--p-blue);color:var(--p-blue-ink);text-decoration:none;font:inherit;font-size:12px;font-weight:700;border:0}
@@ -586,7 +591,7 @@ const AppKit = (() => {
 })();
 </script>
 <script>
-const BUILD = '1795080237';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
+const BUILD = '1795147958';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
 AppKit.fixViewport();
 AppKit.autoUpdate(BUILD);
 AppKit.showErrors(BUILD);
@@ -642,9 +647,13 @@ const S = {
   pending: [],                              // 읽는 중인 명함 사진
   q: '', search: false, cat: LS.get('cat', '전체'), org: '', sort: LS.get('sort', 'date'),
   ai: LS.get('ai', null),
+  autoVcf: LS.get('autoVcf', true),          // 확인할 때 아이폰 연락처에도 넣기
 };
 const list = () => S.demo ? DEMO : S.cards;
 const keep = () => { LS.set('cards', S.cards); updCount(); };
+/* 아이폰 연락처에 넣은 명함(이 휴대폰 기준) */
+const VC = { get: () => new Set(LS.get('vcfIds', [])), add: ids => { const s = VC.get(); ids.forEach(i => s.add(i)); LS.set('vcfIds', [...s]); } };
+const toContacts = () => S.demo ? [] : list().filter(c => c.checked && !VC.get().has(c.id));
 
 /* ── 서버 호출 ── text/plain POST (사전 요청 없이). 실패하면 오프라인 대기열 */
 let api = async (action, payload = {}) => {
@@ -787,6 +796,7 @@ const tabs = AppKit.tabs({
       if (!list().length && !S.pending.length) { sc.innerHTML = emptyHome(); return; }
       sc.innerHTML = `<div class="bar"><button type="button" class="sel" data-catpick><span id="selN"></span>${IC.down}</button><span class="sp"></span>
         <button type="button" class="tool" data-sort>${IC.sort}${SORTS[S.sort]}</button></div>
+        ${toContacts().length ? `<div class="vbar">${IC.save}<span>아이폰 연락처에 아직 안 넣은 명함 ${toContacts().length}장</span><button type="button" data-vcfnew>넣기</button><button type="button" class="x" data-vcfskip aria-label="넣지 않기">${IC.x}</button></div>` : ''}
         ${S.search || S.q ? `<div class="sbox">${IC.search}<input id="q" type="search" placeholder="이름·기관·전화·초성(ㄱㄷㅎ)" value="${esc(S.q)}" enterkeyhint="search" autocomplete="off"><button type="button" data-searchoff aria-label="검색 닫기">${IC.x}</button></div>` : ''}
         <div id="lst"></div><div style="height:90px"></div>`;
       drawList();
@@ -806,6 +816,8 @@ const tabs = AppKit.tabs({
         <button type="submit" class="btn">${srv ? '다시 연결하기' : '연결하기'}</button></form>
         ${srv ? '<button type="button" class="btn del" data-srvoff>연결 끊기</button>' : ''}</div>
       ${S.demo ? `<div class="card"><h2>예시로 둘러보는 중</h2><p>예시 명함은 저장되지 않아요.</p><button type="button" class="btn" data-demo="off">예시 끄기</button></div>` : ''}
+      <div class="card"><h2>아이폰 연락처</h2><p>명함을 확인('맞아요')하거나 직접 넣으면 연락처 화면을 바로 띄워요. '새로운 연락처 생성'만 누르면 돼요.</p>
+        <label class="tg"><input type="checkbox" data-autovcf ${S.autoVcf ? 'checked' : ''}><span>확인할 때 연락처에도 넣기</span></label></div>
       <div class="card"><h2>내보내기·백업</h2><p>${srv ? '명함은 구글 시트(명함첩)와 드라이브(명함첩 사진 폴더)에 저장돼요.' : '서버를 연결하기 전에는 명함이 이 휴대폰 안에만 있어요.'}</p>
         <div class="row2"><button type="button" class="btn sub" data-backup>백업 받기</button><label class="btn sub" style="cursor:pointer">불러오기<input type="file" id="restore" accept=".json,application/json" hidden></label></div>
         <button type="button" class="btn sub" data-vcfall>${IC.save}전체를 연락처 파일(.vcf)로</button></div>
@@ -958,10 +970,18 @@ const vq = s => String(s || '').replace(/[\\,;]/g, m => '\\' + m).replace(/\n/g,
 const vcard = c => ['BEGIN:VCARD', 'VERSION:3.0', `N:${vq(c.name.slice(0, 1))};${vq(c.name.slice(1))};;;`, `FN:${vq(c.name)}`,
   c.org && `ORG:${vq(c.org)}${c.dept ? ';' + vq(c.dept) : ''}`, c.title && `TITLE:${vq(c.title)}`,
   c.mobile && `TEL;TYPE=CELL:${c.mobile}`, c.tel && `TEL;TYPE=WORK:${c.tel}`, c.fax && `TEL;TYPE=FAX:${c.fax}`, c.email && `EMAIL;TYPE=WORK:${c.email}`,
-  c.addr && `ADR;TYPE=WORK:;;${vq(c.addr)};;;;`, c.web && `URL:${c.web}`, c.memo && `NOTE:${vq(c.memo)}`, 'END:VCARD'].filter(Boolean).join('\r\n');
+  c.addr && `ADR;TYPE=WORK:;;${vq(c.addr)};;;;`, c.web && `URL:${c.web}`, `NOTE:${vq(['명함첩', c.cat, c.met && c.met + ' 만남', c.place, c.memo].filter(Boolean).join(' · '))}`, 'END:VCARD'].filter(Boolean).join('\r\n');
 function download(name, text, type) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+}
+/* 연락처에 넣은 명함 기억(이 휴대폰 기준). 아이폰 연락처는 웹앱이 직접 못 쓰니
+   연락처 파일을 열어 '새로운 연락처 생성'을 누르게 한다. 여러 장이면 '모든 연락처 추가' */
+function addContacts(cards) {
+  if (!cards.length) return;
+  download(cards.length === 1 ? cards[0].name + '.vcf' : `명함 ${cards.length}장.vcf`, cards.map(vcard).join('\r\n'), 'text/vcard');
+  VC.add(cards.map(c => c.id));
+  AppKit.toast(cards.length === 1 ? "연락처 화면에서 '새로운 연락처 생성'을 눌러 주세요" : "연락처 화면에서 '모든 연락처 추가'를 눌러 주세요");
 }
 async function backup() {
   const photos = {}; for (const c of S.cards) if (c.photo) { const p = await PH.get(c.id); if (p) photos[c.id] = p; }
@@ -982,6 +1002,7 @@ document.addEventListener('change', async e => {
   if (e.target.name === 'org' && e.target.form?.id === 'fm') { const o = list().find(x => x.org === e.target.value); if (o) e.target.form.cat.value = o.cat; }
   if (e.target.id === 'shot' && e.target.files[0]) { draft = { photo: await AppKit.toJpeg(e.target.files[0], 1100, .8) }; const l = e.target.closest('.shot'); l.querySelector('svg,img')?.remove(); l.insertAdjacentHTML('afterbegin', `<img src="${draft.photo}" alt="">`); }
   if (e.target.id === 'restore' && e.target.files[0]) restore(e.target.files[0]);
+  if (e.target.matches('[data-autovcf]')) { S.autoVcf = e.target.checked; LS.set('autoVcf', S.autoVcf); AppKit.toast(S.autoVcf ? '확인할 때 연락처에도 넣을게요' : '연락처에는 직접 넣을 때만 넣을게요'); }
 });
 document.addEventListener('submit', async e => {
   e.preventDefault();
@@ -1001,8 +1022,9 @@ document.addEventListener('submit', async e => {
   if (!v.name) { AppKit.toast('이름을 넣어 주세요'); btn.disabled = false; return; }
   const old = S.cur && S.cards.find(x => x.id === S.cur);
   const card = old ? { ...old, ...v, checked: true } : { id: 'c' + Date.now().toString(36), at: Date.now(), met: AppKit.kstDate(), fav: false, checked: true, ...v };
+  const toC = S.autoVcf && !VC.get().has(card.id); if (toC) addContacts([card]);   // 누른 순간에 띄워야 아이폰이 막지 않는다
   sheet.close(); await store(card, draft?.photo); draft = null;
-  AppKit.toast(old ? '고쳤어요' : `${card.name} 님 명함을 넣었어요`); tabs.redraw();
+  if (!toC) AppKit.toast(old ? '고쳤어요' : `${card.name} 님 명함을 넣었어요`); tabs.redraw();
 });
 /* 검색은 글자마다 목록만 다시 그린다(한글 조합 중인 글자가 깨지지 않게 입력칸은 그대로) */
 document.addEventListener('input', e => { if (e.target.id === 'q') { S.q = e.target.value; drawList(); } });
@@ -1023,13 +1045,15 @@ document.addEventListener('click', async e => {
   if (q('[data-goset]')) return tabs.go('set');
   if (q('[data-demo]')) { S.demo = q('[data-demo]').dataset.demo === 'on'; LS.set('demo', S.demo); S.cat = '전체'; updCount(); tabs.go(S.demo ? 'list' : tabs.current); return; }
   if (q('[data-srvoff]')) { if (!AppKit.sure(q('[data-srvoff]'), '연결을 끊을까요?')) return; S.srv = null; LS.del('srv'); AppKit.toast('연결을 끊었어요. 휴대폰 안 명함은 그대로 있어요'); tabs.redraw(); return; }
+  if (q('[data-vcfnew]')) { addContacts(toContacts()); tabs.redraw(); return; }
+  if (q('[data-vcfskip]')) { VC.add(toContacts().map(c => c.id)); AppKit.toast('연락처에 넣지 않을게요. 명함을 열어 하나씩 넣을 수 있어요'); tabs.redraw(); return; }
   if (q('[data-backup]')) return backup();
   if (q('[data-vcfall]')) { if (!list().length) return AppKit.toast('내보낼 명함이 없어요'); download('명함첩-연락처.vcf', list().map(vcard).join('\r\n'), 'text/vcard'); return; }
   const c = list().find(x => x.id === S.cur);
   if (!c) return;
-  if (q('[data-vcf]')) { download(c.name + '.vcf', vcard(c), 'text/vcard'); return; }
+  if (q('[data-vcf]')) { addContacts([c]); return; }
   if (q('[data-edit]')) return openForm(c.id);
-  if (q('[data-ok]')) { c.checked = true; if (!S.demo) await store(c); AppKit.toast('확인했어요'); openCard(c.id); tabs.redraw(); return; }
+  if (q('[data-ok]')) { c.checked = true; if (S.autoVcf && !S.demo && !VC.get().has(c.id)) addContacts([c]); if (!S.demo) await store(c); if (!S.autoVcf || S.demo) AppKit.toast('확인했어요'); openCard(c.id); tabs.redraw(); return; }
   if (q('[data-fav]')) { c.fav = !c.fav; if (!S.demo) await store(c); AppKit.toast(c.fav ? '즐겨찾기에 넣었어요' : '즐겨찾기에서 뺐어요'); openCard(c.id); tabs.redraw(); return; }
   if (q('[data-delete]')) {
     if (S.demo) return AppKit.toast('예시 명함은 지울 수 없어요');
