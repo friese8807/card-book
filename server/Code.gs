@@ -27,7 +27,7 @@ function setup() {
   console.log('명함 시트: ' + SpreadsheetApp.openById(P.getProperty('SHEET_ID')).getUrl());
   console.log('사진 폴더: ' + DriveApp.getFolderById(P.getProperty('FOLDER_ID')).getUrl());
   console.log('명함 읽기: ' + (P.getProperty('ANTHROPIC_API_KEY') ? 'AI(Claude)' : '구글 OCR (ANTHROPIC_API_KEY 를 넣으면 AI 로 읽어요)'));
-  if (url) console.log('한 번 누르는 연결 링크(사파리에서 열기): https://<계정>.github.io/card-book/#setup=' + Utilities.base64EncodeWebSafe(JSON.stringify({ url, token: P.getProperty('APP_TOKEN') })));
+  if (url) console.log('한 번 누르는 연결 링크(사파리에서 열기): https://friese8807.github.io/card-book/#setup=' + Utilities.base64EncodeWebSafe(JSON.stringify({ url, token: P.getProperty('APP_TOKEN') })));
 }
 function sheet_() {
   const P = PropertiesService.getScriptProperties(); let id = P.getProperty('SHEET_ID'), ss;
