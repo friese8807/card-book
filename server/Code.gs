@@ -27,7 +27,7 @@ function setup() {
   console.log('명함 시트: ' + SpreadsheetApp.openById(P.getProperty('SHEET_ID')).getUrl());
   console.log('사진 폴더: ' + DriveApp.getFolderById(P.getProperty('FOLDER_ID')).getUrl());
   console.log('명함 읽기: ' + (P.getProperty('ANTHROPIC_API_KEY') ? 'AI(Claude)' : '구글 OCR (ANTHROPIC_API_KEY 를 넣으면 AI 로 읽어요)'));
-  if (url) console.log('한 번 누르는 연결 링크(사파리에서 열기): https://friese8807.github.io/card-book/#setup=' + Utilities.base64EncodeWebSafe(JSON.stringify({ url, token: P.getProperty('APP_TOKEN') })));
+  if (url) console.log('한 번 누르는 연결 링크(사파리에서 열기): https://<계정>.github.io/card-book/#setup=' + Utilities.base64EncodeWebSafe(JSON.stringify({ url, token: P.getProperty('APP_TOKEN') })));
 }
 function sheet_() {
   const P = PropertiesService.getScriptProperties(); let id = P.getProperty('SHEET_ID'), ss;
@@ -68,7 +68,6 @@ function handle_(q) {
       case 'list': return { ok: true, data: { cards: list_() } };
       case 'scan': return { ok: true, data: scan_(q.img) };
       case 'save': return { ok: true, data: save_(q.card, q.photo) };
-      case 'bulk': return { ok: true, data: bulk_(q.cards) };
       case 'del': return { ok: true, data: del_(q.id) };
       case 'photos': return { ok: true, data: photos_(q.ids) };
       default: return { ok: false, message: '알 수 없는 요청이에요' };
@@ -86,20 +85,6 @@ function rows_() {
 }
 const toCard_ = r => { const c = {}; COLS.forEach((k, i) => c[k] = r[i]); c.fav = c.fav === 'TRUE' || c.fav === 'true' || c.fav === '1'; c.checked = c.checked !== 'FALSE' && c.checked !== 'false' && c.checked !== '0'; c.at = Number(c.at) || 0; c.photo = !!c.photoId; return c; };
 function list_() { return rows_().rows.filter(r => r[0]).map(toCard_); }
-/* 여러 장 한꺼번에 넣기(리멤버 가져오기 등). 사진 없이 글자만, 이미 있는 id 는 건너뛴다 */
-function bulk_(cards) {
-  if (!Array.isArray(cards) || !cards.length) return { added: 0 };
-  const lock = LockService.getScriptLock(); lock.waitLock(30000);
-  try {
-    const { sh, rows } = rows_(), have = new Set(rows.map(r => r[0])), now = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm');
-    const out = cards.filter(c => c && c.id && String(c.name || '').trim() && !have.has(c.id)).map(c => {
-      c = Object.assign({}, c, { updated: now, photoId: '' }); if (!c.at) c.at = Date.now();
-      return COLS.map(k => k === 'fav' || k === 'checked' ? (c[k] ? 'TRUE' : 'FALSE') : c[k] == null || c[k] === '' ? '' : "'" + String(c[k]));
-    });
-    if (out.length) sh.getRange(sh.getLastRow() + 1, 1, out.length, COLS.length).setValues(out);
-    return { added: out.length };
-  } finally { lock.releaseLock(); }
-}
 function save_(card, photo) {
   if (!card || !card.id || !String(card.name || '').trim()) throw new Error('이름이 없는 명함은 저장할 수 없어요');
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
@@ -264,13 +249,11 @@ const MINISTRY = /(기획재정부|교육부|과학기술정보통신부|외교�
 function classify_(org, email, dept) {
   org = String(org || ''); email = String(email || '').toLowerCase();
   if (MY_COMPANY.test(org) || /allforland/.test(email)) return '사내';
-  if (/(대학교|대학원|대학$|협회|재단|조합|연합회|학회|^\(사\)|^사단법인)/.test(org)) return '공공기관';   // 국립○○대학교·부산광역시○○협회가 먼저 걸리지 않게
-  if (/^한국.*(원|공단|공사)$/.test(org.replace(/\s/g, ''))) return '공공기관';
   if (/(시청|도청|군청|구청|광역시|특별시|특별자치|^[가-힣]{2,4}(도|시|군|구)$)/.test(org)) return '지자체';
-  if (/(국립|조사원|국토지리정보원|지방해양수산청|해양경찰|[가-힣]청$|[가-힣]서$|관리단|사무소$)/.test(org)) return '소속·산하기관';
+  if (/(국립|조사원|정보원|지방해양수산청|해양경찰|[가-힣]청$|관리단|사무소$)/.test(org)) return '소속·산하기관';
   if (MINISTRY.test(org)) return '중앙부처';
-  if (/(공단|공사|진흥원|연구원|연구소|테크노파크|센터$)/.test(org) || /\.(or|re|ac)\.kr$/.test(email)) return '공공기관';
-  if (/(\(주\)|㈜|주식회사|Inc|Co\.|Corp|Ltd|정보기술|기술$|소프트|시스템|테크|솔루션|랩$|컨설팅|엔지니어링|산업|인더스트리|건설|전자|통신|호텔|리조트|콘텐츠|부문$)/i.test(org) || /\.(co\.kr|com|ai|io|net)$/.test(email)) return '기업';
+  if (/(공단|공사|진흥원|연구원|협회|재단|진흥회|대학교|대학원|\.or\.kr|\.re\.kr)/.test(org) || /\.(or|re|ac)\.kr$/.test(email)) return '공공기관';
+  if (/(\(주\)|㈜|주식회사|Inc|Co\.|Corp|Ltd)/i.test(org) || /\.(co\.kr|com|ai|io|net)$/.test(email)) return '기업';
   if (/korea\.kr$/.test(email)) return '소속·산하기관';
   return '기타';
 }
