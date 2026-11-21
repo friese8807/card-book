@@ -163,6 +163,7 @@ button{touch-action:manipulation}
 .bar .tool .ak-ic{width:17px;height:17px}
 .sbox{display:flex;align-items:center;gap:8px;background:var(--solid);border:1px solid var(--line);border-radius:12px;padding:0 10px;height:44px;margin:10px max(16px,var(--sar)) 4px max(16px,var(--sal))}
 .sbox .ak-ic{width:18px;height:18px;color:var(--muted);flex:none}
+.sbox input::-webkit-search-cancel-button{display:none}
 .sbox input{flex:1;min-width:0;border:0;background:none;color:var(--ink);font:inherit;font-size:16px;outline:none}
 .sbox button{border:0;background:none;color:var(--muted);width:32px;height:32px;padding:0;display:grid;place-items:center}
 .orgf{display:inline-flex;align-items:center;gap:6px;margin:10px 16px 0;border:0;border-radius:999px;background:var(--accent);color:var(--on-acc);font:inherit;font-size:13.5px;font-weight:700;padding:7px 12px}
@@ -307,7 +308,7 @@ button{touch-action:manipulation}
 
 <header class="ak-top">
   <h1>명함첩</h1>
-  <span class="ak-status"><span id="st" class="tag" style="background:var(--new);color:var(--new-ink)"></span></span>
+  <span class="ak-status"><span id="st" class="tag" role="button" data-cat="확인" style="background:var(--new);color:var(--new-ink)"></span></span>
   <button class="ak-icon-btn" id="find" type="button" aria-label="검색"><svg class="ak-ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
   <button class="ak-icon-btn" id="reload" type="button" aria-label="새로고침" onclick="refresh()"><svg class="ak-ic" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
 </header>
@@ -628,7 +629,7 @@ const AppKit = (() => {
 })();
 </script>
 <script>
-const BUILD = '1795156564';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
+const BUILD = '1795279147';            // version.txt 와 같은 숫자 — scripts/bump_version.py 가 함께 바꾼다
 AppKit.fixViewport({ gap: false });   // 홈 화면 앱에서 탭바가 아래로 잘려서 보정을 끈다(2026-11-20 확인)
 AppKit.autoUpdate(BUILD);
 AppKit.showErrors(BUILD);
@@ -740,7 +741,9 @@ async function refresh() {
     const ids = new Set(d.cards.map(c => c.id)), local = S.cards.filter(c => !ids.has(c.id) && !c.synced);
     d.cards.forEach(c => c.synced = true);
     const sig = JSON.stringify(d.cards) + local.length; if (sig === S.sig) return; S.sig = sig;
-    S.cards = [...d.cards, ...local]; keep();
+    S.cards = [...d.cards, ...local];
+    if (LS.get('vcfIds', null) === null) VC.add(S.cards.map(c => c.id));   // 새 휴대폰·다시 설치: 서버 명함 전체를 연락처 넣기 줄에 띄우면 연락처가 수백 개 겹친다
+    keep();
     const withPh = local.filter(c => c.photo), plainC = local.filter(c => !c.photo);
     if (plainC.length) await uploadMany(plainC).catch(() => {});
     for (const c of withPh) await store(c, await PH.get(c.id));
@@ -771,6 +774,7 @@ function match(c, q) {
 }
 function filtered() {
   let a = list().filter(c => match(c, S.q));
+  if (S.q) return a.sort((x, y) => y.at - x.at);   // 검색은 분류·기관 거르기와 상관없이 전체에서
   if (S.cat === '★') a = a.filter(c => c.fav); else if (S.cat === '확인') a = a.filter(c => !c.checked); else if (S.cat !== '전체') a = a.filter(c => c.cat === S.cat);
   if (S.org) { const k = orgKey(S.org); a = a.filter(c => orgKey(c.org) === k); }
   const byName = (x, y) => x.name.localeCompare(y.name, 'ko');
@@ -807,11 +811,11 @@ function listHTML() {
   for (const c of a) { const k = groupKey(c); if (k !== last) { h += `<div class="gh">${brk(k)}<span>${cnt[k]}</span></div>`; last = k; } h += rowHTML(c); }
   return h;
 }
-const catLabel = () => S.cat === '전체' ? '전체' : S.cat === '★' ? '즐겨찾기' : S.cat === '확인' ? '확인 필요' : S.cat;
+const catLabel = () => S.q ? '검색' : S.cat === '전체' ? '전체' : S.cat === '★' ? '즐겨찾기' : S.cat === '확인' ? '확인 필요' : S.cat;
 function drawList() {
   const box = document.getElementById('lst'); if (!box) return;
   document.getElementById('selN').textContent = `${catLabel()} (${filtered().length})`;
-  box.innerHTML = (S.org ? `<button type="button" class="orgf" data-orgoff>${esc(S.org)} ${IC.x}</button>` : '') + listHTML();
+  box.innerHTML = (S.org && !S.q ? `<button type="button" class="orgf" data-orgoff>${esc(S.org)} ${IC.x}</button>` : '') + listHTML();
   loadThumbs(box);
 }
 async function loadThumbs(box) {
@@ -1366,6 +1370,7 @@ async function restore(file) {
   try {
     const j = JSON.parse(await file.text()); if (!Array.isArray(j.cards)) throw 0;
     const have = new Set(S.cards.map(c => c.id)); let n = 0;
+    if (LS.get('vcfIds', null) === null) VC.add(j.cards.map(c => c.id));
     for (const c of j.cards) { if (have.has(c.id)) continue; n++; await store(c, j.photos?.[c.id]); }
     AppKit.toast(n ? `${n}장을 불러왔어요` : '새로 불러올 명함이 없어요'); tabs.redraw();
   } catch (e) { AppKit.toast('백업 파일을 읽지 못했어요'); }
@@ -1481,7 +1486,7 @@ async function rememberGo(btn) {
 
 /* ── 입력 ── */
 document.addEventListener('change', async e => {
-  if (e.target.name === 'org' && e.target.form?.id === 'fm') { const o = list().find(x => x.org && orgKey(x.org) === orgKey(e.target.value)); if (o) e.target.form.cat.value = o.cat; }
+  if (e.target.name === 'org' && e.target.form?.id === 'fm') { const fm = e.target.form, o = list().find(x => x.org && orgKey(x.org) === orgKey(e.target.value)); if (o) fm.cat.value = o.cat; else if (fm.cat.value === '기타') fm.cat.value = classify(e.target.value, fm.email.value); }
   if (e.target.id === 'shot' && e.target.files[0]) { draft = { photo: await AppKit.toJpeg(e.target.files[0], 1100, .8) }; const l = e.target.closest('.shot'); l.querySelector('svg,img')?.remove(); l.insertAdjacentHTML('afterbegin', `<img src="${draft.photo}" alt="">`); }
   if (e.target.id === 'restore' && e.target.files[0]) restore(e.target.files[0]);
   if (e.target.id === 'rmfile' && e.target.files[0]) { const f = e.target.files[0]; e.target.value = ''; rememberPick(f); }
@@ -1507,7 +1512,7 @@ document.addEventListener('submit', async e => {
   if (e.target.id !== 'fm') return;
   if (S.demo) return AppKit.toast('예시에서는 저장되지 않아요. 설정에서 예시를 꺼 주세요');
   const btn = e.target.querySelector('[type=submit]'); if (btn.disabled) return; btn.disabled = true;
-  const v = Object.fromEntries(new FormData(e.target)); for (const k in v) v[k] = String(v[k]).trim();
+  const v = Object.fromEntries(new FormData(e.target)); for (const k in v) v[k] = String(v[k]).trim(); for (const k of ['mobile', 'tel', 'fax']) v[k] = phoneFmt(v[k]);
   if (!v.name) { AppKit.toast('이름을 넣어 주세요'); btn.disabled = false; return; }
   const old = S.cur && S.cards.find(x => x.id === S.cur);
   const card = old ? { ...old, ...v, checked: true } : { id: 'c' + Date.now().toString(36), at: Date.now(), met: AppKit.kstDate(), fav: false, checked: true, ...v };
@@ -1525,7 +1530,7 @@ document.addEventListener('click', async e => {
   if (q('[data-open]')) return openCard(q('[data-open]').dataset.open);
   if (q('[data-retry]')) { const p = S.pending.find(x => x.id === q('[data-retry]').dataset.retry); S.pending = S.pending.filter(x => x !== p); tabs.redraw(); return openForm(null, { photo: p.img }); }
   if (q('[data-catpick]')) return openPick('cat');
-  if (q('[data-cat]')) { S.cat = q('[data-cat]').dataset.cat; LS.set('cat', S.cat); sheet.close(); tabs.redraw(); return; }
+  if (q('[data-cat]')) { S.cat = q('[data-cat]').dataset.cat; LS.set('cat', S.cat); S.q = ''; S.search = false; S.org = ''; sheet.close(); tabs.current === 'list' ? tabs.redraw() : tabs.go('list'); return; }
   if (q('[data-sort]')) { const k = Object.keys(SORTS); S.sort = k[(k.indexOf(S.sort) + 1) % k.length]; LS.set('sort', S.sort); tabs.redraw(); AppKit.toast(SORTS[S.sort] + '으로 보여 드릴게요'); return; }
   if (q('#find')) { if (tabs.current !== 'list') tabs.go('list'); S.search = true; tabs.redraw(); document.getElementById('q')?.focus(); return; }
   if (q('[data-searchoff]')) { S.search = false; S.q = ''; tabs.redraw(); return; }
